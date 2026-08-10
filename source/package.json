@@ -1,0 +1,26 @@
+{
+  "name": "math-hinge-system-81",
+  "version": "0.2.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build"
+  },
+  "dependencies": {
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3"
+  },
+  "displayName": "\u05d4\u05de\u05e8\u05d7\u05d1 \u05d4\u05de\u05ea\u05de\u05d8\u05d9"
+}
