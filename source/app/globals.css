@@ -582,6 +582,15 @@ select {
   font-size: 17px;
   text-align: left;
   unicode-bidi: isolate;
+  overflow: hidden;
+}
+.equation-preview math-display {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .equation-help {
   margin: 7px 2px 0;
@@ -785,6 +794,7 @@ select {
 }
 .properties .toggle {
   margin: 10px 0;
+  font-size: 14px;
 }
 .properties .colors {
   flex-wrap: wrap;
@@ -836,7 +846,7 @@ select {
 }
 .properties-title strong {
   color: #174f4b;
-  font-size: 13px;
+  font-size: 15px;
 }
 .properties-title button {
   display: grid;
@@ -1274,7 +1284,7 @@ select {
 /* Object name and disclosure arrow are separate controls. */
 .object-list > .object-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: 40px minmax(0, 1fr) 42px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -1291,27 +1301,29 @@ select {
 .object-card .object-main {
   min-width: 0;
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  padding: 9px 8px;
+  padding: 11px 8px;
   border: 0;
   background: transparent;
   text-align: right;
   cursor: pointer;
 }
-.object-card .object-main i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
 .object-card .object-main span {
   overflow: hidden;
-  font-size: 12px;
-  direction: ltr;
+  font-size: 15px;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.object-card .object-main .object-description {
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+.object-card .object-main .function-object-label {
+  direction: ltr;
+  text-align: left;
 }
 .object-card .object-main span b {
   font-family: "Latin Modern Math", serif;
@@ -1321,7 +1333,37 @@ select {
 .object-card math-display {
   vertical-align: middle;
   font-family: "Latin Modern Math", serif;
-  font-size: 16px;
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.object-card .object-visibility {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid #e1eaec;
+  background: transparent;
+  cursor: pointer;
+}
+.object-card .object-visibility:hover {
+  background: #eaf6f5;
+}
+.object-card .object-visibility i {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--object-color);
+  border-radius: 50%;
+  background: var(--object-color);
+  box-shadow: 0 0 0 2px #fff inset;
+}
+.object-card .object-visibility i.empty {
+  background: #fff;
+  box-shadow: none;
 }
 .object-card .object-toggle {
   display: grid;
@@ -1330,7 +1372,7 @@ select {
   border-right: 1px solid #e1eaec;
   background: transparent;
   color: #71878e;
-  font-size: 18px;
+  font-size: 22px;
   cursor: pointer;
 }
 .object-card .object-toggle:hover {
@@ -1355,7 +1397,7 @@ select {
   display: block;
   margin: 9px 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
 }
 .name-field input {
@@ -1385,14 +1427,14 @@ select {
   font-family: "Latin Modern Math", Arial, sans-serif;
   font-size: 16px;
   font-weight: 600;
-  direction: ltr;
-  text-align: left;
+  direction: rtl;
+  text-align: right;
 }
 .name-field-readonly small {
   display: block;
   margin-top: 4px;
   color: #73878e;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 400;
 }
 

@@ -38,7 +38,13 @@ export type SegmentObject = {
         sourceId: string;
         throughId: string;
       }
-    | { kind: "angleBisector"; angleId: string };
+    | {
+        kind: "angleBisector";
+        angleId?: string;
+        aId?: string;
+        vertexId?: string;
+        cId?: string;
+      };
 };
 
 export type FunctionObject = {

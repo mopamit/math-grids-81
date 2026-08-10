@@ -246,11 +246,44 @@ const hasDerivedName = (object: MathObject) =>
   object.type === "polygon" ||
   object.type === "circle";
 
-const derivedObjectName = (object: MathObject, allObjects: MathObject[]) => {
+const derivedObjectName = (
+  object: MathObject,
+  allObjects: MathObject[],
+): string => {
   const pointName = (id?: string) =>
     allObjects.find((candidate) => candidate.type === "point" && candidate.id === id)
       ?.name;
   if (object.type === "segment" || object.type === "line") {
+    if (
+      object.construction?.kind === "parallel" ||
+      object.construction?.kind === "perpendicular"
+    ) {
+      const construction = object.construction;
+      const source = allObjects.find(
+        (candidate) => candidate.id === construction.sourceId,
+      );
+      if (source) {
+        const relation =
+          construction.kind === "parallel" ? "מקביל" : "מאונך";
+        return `${relation} ל־${derivedObjectName(source, allObjects)}`;
+      }
+    }
+    if (object.construction?.kind === "angleBisector") {
+      const construction = object.construction,
+        angle = construction.angleId
+          ? allObjects.find(
+              (candidate): candidate is AngleObject =>
+                candidate.type === "angle" && candidate.id === construction.angleId,
+            )
+          : undefined,
+        angleName = angle
+          ? derivedObjectName(angle, allObjects)
+          : [construction.aId, construction.vertexId, construction.cId]
+              .map(pointName)
+              .filter(Boolean)
+              .join("");
+      if (angleName) return `חוצה זווית ${angleName.replace(/^∠/, "")}`;
+    }
     const a = pointName(object.aId),
       b = pointName(object.bId);
     return a && b ? `${a}${b}` : object.name;
@@ -274,6 +307,34 @@ const derivedObjectName = (object: MathObject, allObjects: MathObject[]) => {
     return center ? `מעגל ${center}` : object.name;
   }
   return object.name;
+};
+
+const ObjectNameDisplay = ({
+  object,
+  allObjects,
+}: {
+  object: MathObject;
+  allObjects: MathObject[];
+}) => {
+  if (
+    (object.type === "segment" || object.type === "line") &&
+    (object.construction?.kind === "parallel" ||
+      object.construction?.kind === "perpendicular")
+  ) {
+    const construction = object.construction;
+    const source = allObjects.find(
+      (candidate) => candidate.id === construction.sourceId,
+    );
+    return (
+      <>
+        {construction.kind === "parallel" ? "מקביל" : "מאונך"} ל־
+        <bdi dir="ltr">
+          {source ? derivedObjectName(source, allObjects) : object.name}
+        </bdi>
+      </>
+    );
+  }
+  return <bdi dir="ltr">{derivedObjectName(object, allObjects)}</bdi>;
 };
 const GRID_PIXELS = 64;
 const scaleForGridStep = (step: number) => GRID_PIXELS / step;
@@ -545,7 +606,11 @@ export default function CoordinateWorkspace() {
         .replace(/[·×]/g, "*")
         .replace(/\s/g, "")
         .split("=");
-      if (sides.length !== 2 || sides[0] !== "y") throw new Error("equation");
+      if (sides.length !== 2) throw new Error("equation");
+      const left = sides[0],
+        functionMatch = left.match(/^([a-z][a-z0-9_]*)\(x\)$/),
+        declaredName = functionMatch?.[1];
+      if (left !== "y" && !declaredName) throw new Error("equation");
       let expression = sides[1];
       const allowedFunctions = new Set([
           "sqrt",
@@ -592,7 +657,8 @@ export default function CoordinateWorkspace() {
         `"use strict";return (${expression});`,
       ) as (x: number, vars: Record<string, number>) => number;
       return {
-        normalized: `y=${sides[1]}`,
+        normalized: `${left}=${sides[1]}`,
+        declaredName,
         evaluate: (x: number) => evaluate(x, variables),
       };
     },
@@ -659,22 +725,26 @@ export default function CoordinateWorkspace() {
         }
       }
       if (construction?.kind === "angleBisector") {
-        const angleId = construction.angleId,
-          angle = objects.find(
-            (x): x is AngleObject => x.type === "angle" && x.id === angleId,
-          );
-        if (angle) {
-          const a = pointById(angle.aId),
-            v = pointById(angle.vertexId),
-            c = pointById(angle.cId);
-          if (a && v && c) {
+        const angle = construction.angleId
+            ? objects.find(
+                (x): x is AngleObject =>
+                  x.type === "angle" && x.id === construction.angleId,
+              )
+            : undefined,
+          a = pointById(angle?.aId ?? construction.aId),
+          v = pointById(angle?.vertexId ?? construction.vertexId),
+          c = pointById(angle?.cId ?? construction.cId);
+        if (a && v && c) {
+          const firstLength = distance(a, v),
+            secondLength = distance(c, v);
+          if (firstLength > 1e-10 && secondLength > 1e-10) {
             const u1 = {
-                x: (a.x - v.x) / distance(a, v),
-                y: (a.y - v.y) / distance(a, v),
+                x: (a.x - v.x) / firstLength,
+                y: (a.y - v.y) / firstLength,
               },
               u2 = {
-                x: (c.x - v.x) / distance(c, v),
-                y: (c.y - v.y) / distance(c, v),
+                x: (c.x - v.x) / secondLength,
+                y: (c.y - v.y) / secondLength,
               };
             return { a: v, b: { x: v.x + u1.x + u2.x, y: v.y + u1.y + u2.y } };
           }
@@ -985,8 +1055,8 @@ export default function CoordinateWorkspace() {
         const labels = [];
         if (o.showRadius) labels.push(`r=${round(r)}`);
         if (o.showDiameter) labels.push(`d=${round(2 * r)}`);
-        if (o.showCircumference) labels.push(`היקף ${round(2 * Math.PI * r)}`);
-        if (o.showArea) labels.push(`שטח ${round(Math.PI * r * r)}`);
+        if (o.showCircumference) labels.push(`p=${round(2 * Math.PI * r)}`);
+        if (o.showArea) labels.push(`s=${round(Math.PI * r * r)}`);
         if (labels.length)
           drawLabel(ctx, labels.join(" · "), p.x, p.y - rp - 18, o.color);
       });
@@ -1038,7 +1108,7 @@ export default function CoordinateWorkspace() {
         if (o.showEquation && label)
           drawLabel(
             ctx,
-            `${o.name}: ${canvasEquation(o.expression)}`,
+            canvasEquation(o.expression),
             label.x,
             label.y,
             o.color,
@@ -1082,10 +1152,10 @@ export default function CoordinateWorkspace() {
         ctx.restore();
         const labels = [];
         if (o.showLength && o.type === "segment")
-          labels.push(`אורך ${round(distance(ep.a, ep.b))}`);
+          labels.push(`d=${round(distance(ep.a, ep.b))}`);
         if (o.showSlope)
           labels.push(
-            `שיפוע ${slope(ep.a, ep.b) === Infinity ? "לא מוגדר" : round(slope(ep.a, ep.b))}`,
+            `m=${slope(ep.a, ep.b) === Infinity ? "לא מוגדר" : round(slope(ep.a, ep.b))}`,
           );
         if (o.showLabel && o.type === "line")
           labels.push(`${derivedObjectName(o, objects)}: ${lineEquation(ep.a, ep.b)}`);
@@ -1273,6 +1343,16 @@ export default function CoordinateWorkspace() {
         ctx.lineTo(b.x, b.y);
       }
       ctx.stroke();
+      if (tool === "circle") {
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#0f766e";
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
       ctx.restore();
     }
   }, [
@@ -1929,10 +2009,10 @@ export default function CoordinateWorkspace() {
         color: COLORS[5],
         fill: false,
         showCenter: true,
-        showRadius: true,
+        showRadius: false,
         showDiameter: false,
-        showCircumference: true,
-        showArea: true,
+        showCircumference: false,
+        showArea: false,
         strokeWidth: 2.5,
         strokeStyle: "solid",
       };
@@ -1975,10 +2055,10 @@ export default function CoordinateWorkspace() {
         color: COLORS[5],
         fill: false,
         showCenter: true,
-        showRadius: true,
+        showRadius: false,
         showDiameter: false,
-        showCircumference: true,
-        showArea: true,
+        showCircumference: false,
+        showArea: false,
         strokeWidth: 2.5,
         strokeStyle: "solid",
       };
@@ -2023,7 +2103,7 @@ export default function CoordinateWorkspace() {
           color: COLORS[6],
           showLength: false,
           showSlope: false,
-          showLabel: true,
+          showLabel: false,
           strokeWidth: 2.5,
           strokeStyle: "dashed",
           construction: {
@@ -2053,16 +2133,23 @@ export default function CoordinateWorkspace() {
         setFeedback("כעת בחרו נקודה שהישר יעבור דרכה");
         return;
       }
-      if (!hitPoint) {
-        setFeedback("בחרו נקודה קיימת");
-        return;
-      }
       const source = objects.find(
         (o): o is SegmentObject =>
           (o.type === "segment" || o.type === "line") && o.id === objectPending,
       );
       if (!source) return;
-      const ep = segmentPoints(source),
+      const throughResult = hitPoint
+          ? { id: hitPoint.id, next: objects, point: hitPoint }
+          : (() => {
+              const created = getOrCreatePoint(cp, objects),
+                point = created.next.find(
+                  (candidate): candidate is PointObject =>
+                    candidate.type === "point" && candidate.id === created.id,
+                )!;
+              return { id: created.id, next: created.next, point };
+            })(),
+        throughPoint = throughResult.point,
+        ep = segmentPoints(source),
         dx = ep.b.x - ep.a.x,
         dy = ep.b.y - ep.a.y,
         v = tool === "parallel" ? { x: dx, y: dy } : { x: -dy, y: dx },
@@ -2073,22 +2160,22 @@ export default function CoordinateWorkspace() {
             tool === "parallel"
               ? `מקביל ל־${source.name}`
               : `מאונך ל־${source.name}`,
-          a: hitPoint,
-          b: { x: hitPoint.x + v.x, y: hitPoint.y + v.y },
-          aId: hitPoint.id,
+          a: throughPoint,
+          b: { x: throughPoint.x + v.x, y: throughPoint.y + v.y },
+          aId: throughPoint.id,
           color: COLORS[6],
           showLength: false,
           showSlope: false,
-          showLabel: true,
+          showLabel: false,
           strokeWidth: 2.5,
           strokeStyle: "solid",
           construction: {
             kind: tool,
             sourceId: source.id,
-            throughId: hitPoint.id,
+            throughId: throughPoint.id,
           },
         };
-      pushObjects([...objects, o]);
+      pushObjects([...throughResult.next, o]);
       setObjectPending(null);
       setSelectedId(o.id);
       setOpenPropertiesId(o.id);
@@ -2136,7 +2223,7 @@ export default function CoordinateWorkspace() {
           aId: hitPoint.id,
           bId: m.id,
           color: COLORS[7],
-          showLength: true,
+          showLength: false,
           showSlope: false,
           showLabel: false,
           strokeWidth: 2.5,
@@ -2150,29 +2237,79 @@ export default function CoordinateWorkspace() {
       return;
     }
     if (tool === "angleBisector") {
-      if (!hit || hit.type !== "angle") {
-        setFeedback("בחרו אובייקט זווית");
+      if (hit?.type === "angle") {
+        const v = pointById(hit.vertexId)!;
+        const l: SegmentObject = {
+          id: uid(), type: "line", name: `חוצה ${hit.name}`,
+          a: v, b: { x: v.x + 1, y: v.y }, aId: v.id,
+          color: COLORS[3], showLength: false, showSlope: false,
+          showLabel: false, strokeWidth: 2.5, strokeStyle: "dashed",
+          construction: { kind: "angleBisector", angleId: hit.id },
+        };
+        pushObjects([...objects, l]);
+        setSelectedId(l.id);
+        setOpenPropertiesId(l.id);
+        setTool("select");
         return;
       }
-      const v = pointById(hit.vertexId)!;
+      if (!objectPending) {
+        if (!hit || (hit.type !== "segment" && hit.type !== "line")) {
+          setFeedback("בחרו את השוק הראשונה של הזווית");
+          return;
+        }
+        setObjectPending(hit.id);
+        setFeedback("בחרו את השוק השנייה, או את הקודקוד המשותף");
+        return;
+      }
+      const first = objects.find(
+        (candidate): candidate is SegmentObject =>
+          (candidate.type === "segment" || candidate.type === "line") &&
+          candidate.id === objectPending,
+      );
+      if (!first || !first.aId || !first.bId) {
+        setFeedback("השוק הראשונה חייבת להיות מחוברת לשתי נקודות");
+        return;
+      }
+      if (hitPoint && [first.aId, first.bId].includes(hitPoint.id)) {
+        setAnglePending([hitPoint.id]);
+        setFeedback("כעת בחרו את השוק השנייה היוצאת מן הקודקוד");
+        return;
+      }
+      if (!hit || (hit.type !== "segment" && hit.type !== "line") || !hit.aId || !hit.bId) {
+        setFeedback("בחרו שוק שנייה המחוברת לאותו קודקוד");
+        return;
+      }
+      const requestedVertex = anglePending[0],
+        shared = requestedVertex && [hit.aId, hit.bId].includes(requestedVertex)
+          ? requestedVertex
+          : [first.aId, first.bId].find((id) => [hit.aId, hit.bId].includes(id));
+      if (!shared) {
+        setFeedback("לשתי השוקיים חייב להיות קודקוד משותף");
+        return;
+      }
+      const aId = first.aId === shared ? first.bId : first.aId,
+        cId = hit.aId === shared ? hit.bId : hit.aId,
+        v = pointById(shared)!;
       const l: SegmentObject = {
         id: uid(),
         type: "line",
-        name: `חוצה ${hit.name}`,
+        name: "חוצה זווית",
         a: v,
         b: { x: v.x + 1, y: v.y },
         aId: v.id,
         color: COLORS[3],
         showLength: false,
         showSlope: false,
-        showLabel: true,
+        showLabel: false,
         strokeWidth: 2.5,
         strokeStyle: "dashed",
-        construction: { kind: "angleBisector", angleId: hit.id },
+        construction: { kind: "angleBisector", aId, vertexId: shared, cId },
       };
       pushObjects([...objects, l]);
       setSelectedId(l.id);
       setOpenPropertiesId(l.id);
+      setObjectPending(null);
+      setAnglePending([]);
       setTool("select");
       return;
     }
@@ -2244,12 +2381,16 @@ export default function CoordinateWorkspace() {
 
   const saveEquation = () => {
     const raw = keyboardFieldRef.current?.getValue("ascii-math") || equation;
-    let parsed: { normalized: string; evaluate: (x: number) => number };
+    let parsed: {
+      normalized: string;
+      declaredName?: string;
+      evaluate: (x: number) => number;
+    };
     try {
       parsed = expressionEvaluator(raw);
     } catch {
       setFeedback(
-        "לא הצלחתי לקרוא את הפונקציה. בדקו שהיא מתחילה ב־y= ושכל משתנה קיבל מחוון.",
+        "לא הצלחתי לקרוא את הפונקציה. אפשר לכתוב y= או f(x)=, ובדקו שכל משתנה קיבל מחוון.",
       );
       return;
     }
@@ -2281,11 +2422,24 @@ export default function CoordinateWorkspace() {
       return;
     }
     if (editing) {
+      const nextName = parsed.declaredName ?? editing.name;
+      if (
+        objects.some(
+          (candidate) =>
+            candidate.type === "function" &&
+            candidate.id !== editing.id &&
+            candidate.name === nextName,
+        )
+      ) {
+        setFeedback(`כבר קיימת פונקציה בשם ${nextName}`);
+        return;
+      }
       pushObjects(
         objects.map((o) =>
           o.id === editing.id
             ? {
                 ...o,
+                name: nextName,
                 expression: parsed.normalized,
                 latex,
                 functionKind: requestedKind,
@@ -2302,9 +2456,9 @@ export default function CoordinateWorkspace() {
           .filter((o): o is FunctionObject => o.type === "function")
           .map((o) => o.name),
       ),
-      name =
-        ["f", "g", "h", "p", "q", "r"].find((n) => !used.has(n)) ??
-        `f${used.size + 1}`,
+      name = parsed.declaredName ??
+        (["f", "g", "h", "p", "q", "r"].find((n) => !used.has(n)) ??
+          `f${used.size + 1}`),
       o: FunctionObject = {
         id: uid(),
         type: "function",
@@ -2320,6 +2474,10 @@ export default function CoordinateWorkspace() {
         minClosed: true,
         maxClosed: true,
       };
+    if (used.has(name)) {
+      setFeedback(`כבר קיימת פונקציה בשם ${name}`);
+      return;
+    }
     pushObjects([...objects, o]);
     setSelectedId(o.id);
     setOpenPropertiesId(o.id);
@@ -2380,10 +2538,10 @@ export default function CoordinateWorkspace() {
         color: COLORS[5],
         fill: false,
         showCenter: true,
-        showRadius: true,
+        showRadius: false,
         showDiameter: false,
-        showCircumference: true,
-        showArea: true,
+        showCircumference: false,
+        showArea: false,
         strokeWidth: 2.5,
         strokeStyle: "solid",
       };
@@ -2479,7 +2637,16 @@ export default function CoordinateWorkspace() {
                     ("throughId" in o.construction &&
                       ids.has(o.construction.throughId)) ||
                     ("angleId" in o.construction &&
-                      ids.has(o.construction.angleId))),
+                      Boolean(
+                        o.construction.angleId &&
+                          ids.has(o.construction.angleId),
+                      )) ||
+                    (o.construction.kind === "angleBisector" &&
+                      [
+                        o.construction.aId,
+                        o.construction.vertexId,
+                        o.construction.cId,
+                      ].some((id) => Boolean(id && ids.has(id))))),
               ))) ||
           (o.type === "point" &&
             Boolean(
@@ -2893,7 +3060,11 @@ export default function CoordinateWorkspace() {
                     setKeyboardOpen(true);
                   }}
                 >
-                  <span className="equation-preview">
+                  <span
+                    className="equation-preview"
+                    title={equation}
+                    aria-label={equation}
+                  >
                     <MathDisplay latex={equationLatex} />
                   </span>
                   <b>⌨ הוספת פונקציה</b>
@@ -3167,23 +3338,50 @@ export default function CoordinateWorkspace() {
                   className={`object-card ${selectedId === o.id ? "selected" : ""} ${o.hidden ? "hidden-object" : ""}`}
                 >
                   <button
+                    className="object-visibility"
+                    aria-label={o.hidden ? "הצגת האובייקט" : "הסתרת האובייקט"}
+                    aria-pressed={!o.hidden}
+                    title={o.hidden ? "הצגת האובייקט" : "הסתרת האובייקט"}
+                    onClick={() =>
+                      pushObjects(
+                        objects.map((candidate) =>
+                          candidate.id === o.id
+                            ? ({ ...candidate, hidden: !candidate.hidden } as MathObject)
+                            : candidate,
+                        ),
+                      )
+                    }
+                  >
+                    <i
+                      className={o.hidden ? "empty" : "filled"}
+                      style={{ "--object-color": o.color } as React.CSSProperties}
+                    />
+                  </button>
+                  <button
                     className="object-main"
                     onClick={() => {
                       setSelectedId(o.id);
                       setTool("select");
                     }}
                   >
-                    <i style={{ background: o.color }} />
-                    <span>
+                    <span
+                      className={
+                        o.type === "function"
+                          ? "function-object-label"
+                          : "object-description"
+                      }
+                      title={
+                        o.type === "function"
+                          ? o.expression
+                          : derivedObjectName(o, objects)
+                      }
+                    >
                       {o.type === "function" ? (
-                        <>
-                          <b>{o.name}: </b>
-                          <MathDisplay latex={o.latex} />
-                        </>
+                        <MathDisplay latex={o.latex} />
                       ) : o.type === "slider" ? (
                         `${o.name} = ${round(o.value, 4)}`
                       ) : (
-                        derivedObjectName(o, objects)
+                        <ObjectNameDisplay object={o} allObjects={objects} />
                       )}
                     </span>
                   </button>
@@ -3207,7 +3405,12 @@ export default function CoordinateWorkspace() {
                       {hasDerivedName(selected) ? (
                         <div className="name-field name-field-readonly">
                           <span>שם האובייקט</span>
-                          <strong>{derivedObjectName(selected, objects)}</strong>
+                          <strong>
+                            <ObjectNameDisplay
+                              object={selected}
+                              allObjects={objects}
+                            />
+                          </strong>
                           <small>השם נקבע לפי נקודות הבנייה</small>
                         </div>
                       ) : (
