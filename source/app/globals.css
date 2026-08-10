@@ -901,6 +901,47 @@ select {
   font-size: 9px;
   font-weight: 700;
 }
+.workspace-controls {
+  position: sticky;
+  z-index: 5;
+  top: -18px;
+  margin: -18px -18px 10px;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid #e1eaec;
+  background: #f7fafb;
+}
+.workspace-controls .field-label {
+  margin-top: 0;
+}
+.workspace-controls select {
+  width: 100%;
+  height: 40px;
+  padding: 0 9px;
+}
+.persistent-select-tool button {
+  width: 100%;
+  height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.persistent-select-tool button span {
+  font-size: 20px;
+}
+.persistent-select-tool button:hover,
+.persistent-select-tool button.active {
+  border-color: #64aaa6;
+  background: #e9f6f5;
+  color: #076b65;
+}
 .mobile-panel-head {
   display: none;
 }
@@ -1330,6 +1371,88 @@ select {
   font-family: "Latin Modern Math", Arial, sans-serif;
   font-size: 16px;
   direction: ltr;
+  text-align: left;
+}
+.name-field-readonly strong {
+  display: block;
+  min-height: 35px;
+  margin-top: 5px;
+  padding: 7px 9px;
+  border: 1px solid #dce7e8;
+  border-radius: 8px;
+  background: #f4f8f8;
+  color: var(--ink);
+  font-family: "Latin Modern Math", Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  direction: ltr;
+  text-align: left;
+}
+.name-field-readonly small {
+  display: block;
+  margin-top: 4px;
+  color: #73878e;
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.radius-dialog {
+  width: min(430px, 94vw);
+  padding: 20px;
+  border: 1px solid #cddfe1;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 25px 80px #0b202955;
+  direction: rtl;
+}
+.radius-dialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.radius-dialog > header strong,
+.radius-dialog > header span {
+  display: block;
+}
+.radius-dialog > header strong {
+  font-size: 20px;
+}
+.radius-dialog > header span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.radius-dialog > header button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: #526a72;
+  font-size: 24px;
+  cursor: pointer;
+}
+.radius-dialog > label {
+  display: block;
+  color: #526a72;
+  font-size: 12px;
+  font-weight: 700;
+}
+.radius-dialog input {
+  display: block;
+  width: 100%;
+  height: 46px;
+  margin-top: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  direction: ltr;
+  font-family: "Latin Modern Math", Arial, sans-serif;
+  font-size: 20px;
   text-align: left;
 }
 .property-equation {

@@ -238,6 +238,43 @@ const canvasEquation = (raw: string) =>
     .replace(/\^3/g, "³")
     .replace(/\*/g, "·")
     .replace(/-/g, "−");
+
+const hasDerivedName = (object: MathObject) =>
+  object.type === "segment" ||
+  object.type === "line" ||
+  object.type === "angle" ||
+  object.type === "polygon" ||
+  object.type === "circle";
+
+const derivedObjectName = (object: MathObject, allObjects: MathObject[]) => {
+  const pointName = (id?: string) =>
+    allObjects.find((candidate) => candidate.type === "point" && candidate.id === id)
+      ?.name;
+  if (object.type === "segment" || object.type === "line") {
+    const a = pointName(object.aId),
+      b = pointName(object.bId);
+    return a && b ? `${a}${b}` : object.name;
+  }
+  if (object.type === "angle") {
+    const a = pointName(object.aId),
+      vertex = pointName(object.vertexId),
+      c = pointName(object.cId);
+    return a && vertex && c ? `∠${a}${vertex}${c}` : object.name;
+  }
+  if (object.type === "polygon") {
+    const names = object.pointIds.map(pointName);
+    return names.every(Boolean) ? names.join("") : object.name;
+  }
+  if (object.type === "circle") {
+    if (object.threePointIds) {
+      const names = object.threePointIds.map(pointName);
+      if (names.every(Boolean)) return `מעגל ${names.join("")}`;
+    }
+    const center = pointName(object.centerId);
+    return center ? `מעגל ${center}` : object.name;
+  }
+  return object.name;
+};
 const GRID_PIXELS = 64;
 const scaleForGridStep = (step: number) => GRID_PIXELS / step;
 const clampScale = (scale: number, step: number) =>
@@ -378,7 +415,7 @@ export default function CoordinateWorkspace() {
   const [objects, setObjects] = useState<MathObject[]>([]),
     [history, setHistory] = useState<MathObject[][]>([]),
     [future, setFuture] = useState<MathObject[][]>([]);
-  const [tool, setTool] = useState<Tool>("point"),
+  const [tool, setTool] = useState<Tool>("select"),
     [mode, setMode] = useState<Mode>("coordinates"),
     [selectedId, setSelectedId] = useState<string | null>(null),
     [openPropertiesId, setOpenPropertiesId] = useState<string | null>(null);
@@ -393,6 +430,8 @@ export default function CoordinateWorkspace() {
     [showGrid, setShowGrid] = useState(true),
     [showNumbers, setShowNumbers] = useState(true),
     [pending, setPending] = useState<ConstructionPoint | null>(null);
+  const [radiusDialogOpen, setRadiusDialogOpen] = useState(false),
+    [radiusInput, setRadiusInput] = useState("1");
   const [anglePending, setAnglePending] = useState<string[]>([]),
     [polygonPending, setPolygonPending] = useState<string[]>([]),
     [objectPending, setObjectPending] = useState<string | null>(null),
@@ -443,6 +482,7 @@ export default function CoordinateWorkspace() {
     setAnglePending([]);
     setPolygonPending([]);
     setObjectPending(null);
+    setRadiusDialogOpen(false);
     setFeedback(null);
   };
   const chooseTool = (next: Tool) => {
@@ -891,8 +931,8 @@ export default function CoordinateWorkspace() {
           ),
           labels = [];
         if (o.showPerimeter)
-          labels.push(`היקף ${round(polygonPerimeter(pts))}`);
-        if (o.showArea) labels.push(`שטח ${round(polygonArea(pts))}`);
+          labels.push(`p=${round(polygonPerimeter(pts))}`);
+        if (o.showArea) labels.push(`s=${round(polygonArea(pts))}`);
         if (labels.length)
           drawLabel(ctx, labels.join(" · "), center.x, center.y, o.color);
         if (o.showAngles)
@@ -1048,7 +1088,7 @@ export default function CoordinateWorkspace() {
             `שיפוע ${slope(ep.a, ep.b) === Infinity ? "לא מוגדר" : round(slope(ep.a, ep.b))}`,
           );
         if (o.showLabel && o.type === "line")
-          labels.push(`${o.name}: ${lineEquation(ep.a, ep.b)}`);
+          labels.push(`${derivedObjectName(o, objects)}: ${lineEquation(ep.a, ep.b)}`);
         if (labels.length)
           drawLabel(
             ctx,
@@ -1079,15 +1119,47 @@ export default function CoordinateWorkspace() {
         ctx.strokeStyle = o.color;
         ctx.lineWidth = o.strokeWidth;
         ctx.setLineDash(strokeDash(o.strokeStyle));
+        const degrees = angleDegrees(a, v, c),
+          firstLength = Math.hypot(pa.x - pv.x, pa.y - pv.y),
+          secondLength = Math.hypot(pc.x - pv.x, pc.y - pv.y),
+          isRightAngle =
+            firstLength > 0.001 &&
+            secondLength > 0.001 &&
+            Math.abs(degrees - 90) < 0.25;
         ctx.beginPath();
-        ctx.arc(pv.x, pv.y, 34, start, start + delta);
+        if (isRightAngle) {
+          const size = 23,
+            firstUnit = {
+              x: (pa.x - pv.x) / firstLength,
+              y: (pa.y - pv.y) / firstLength,
+            },
+            secondUnit = {
+              x: (pc.x - pv.x) / secondLength,
+              y: (pc.y - pv.y) / secondLength,
+            },
+            firstCorner = {
+              x: pv.x + firstUnit.x * size,
+              y: pv.y + firstUnit.y * size,
+            },
+            outerCorner = {
+              x: firstCorner.x + secondUnit.x * size,
+              y: firstCorner.y + secondUnit.y * size,
+            },
+            secondCorner = {
+              x: pv.x + secondUnit.x * size,
+              y: pv.y + secondUnit.y * size,
+            };
+          ctx.moveTo(firstCorner.x, firstCorner.y);
+          ctx.lineTo(outerCorner.x, outerCorner.y);
+          ctx.lineTo(secondCorner.x, secondCorner.y);
+        } else ctx.arc(pv.x, pv.y, 34, start, start + delta);
         ctx.stroke();
         ctx.restore();
         if (o.showMeasure) {
           const mid = start + delta / 2;
           drawLabel(
             ctx,
-            `${round(angleDegrees(a, v, c), 1)}°`,
+            `${round(degrees, 1)}°`,
             pv.x + Math.cos(mid) * 52,
             pv.y + Math.sin(mid) * 52,
             o.color,
@@ -1438,17 +1510,21 @@ export default function CoordinateWorkspace() {
       setFeedback("כדי לסגור מצולע דרושות לפחות שלוש נקודות");
       return;
     }
+    const polygonName = polygonPending
+      .map((id) => objects.find((o) => o.type === "point" && o.id === id)?.name)
+      .filter(Boolean)
+      .join("");
     const p: PolygonObject = {
       id: uid(),
       type: "polygon",
-      name: `מצולע ${objects.filter((o) => o.type === "polygon").length + 1}`,
+      name: polygonName,
       pointIds: polygonPending,
       color: COLORS[4],
       fill: true,
       showLengths: false,
       showAngles: false,
-      showPerimeter: true,
-      showArea: true,
+      showPerimeter: false,
+      showArea: false,
       strokeWidth: 2.5,
       strokeStyle: "solid",
     };
@@ -1739,9 +1815,9 @@ export default function CoordinateWorkspace() {
         aId: a.id,
         bId: b.id,
         color: COLORS[1],
-        showLength: tool === "segment",
+        showLength: false,
         showSlope: false,
-        showLabel: tool === "line",
+        showLabel: false,
         strokeWidth: 2.5,
         strokeStyle: "solid",
       };
@@ -1821,26 +1897,35 @@ export default function CoordinateWorkspace() {
     }
     if (tool === "circle" || tool === "circleRadius") {
       if (!pending) {
-        setPending(cp);
-        setFeedback(
-          tool === "circle"
-            ? "בחרו נקודה על המעגל"
-            : "לחצו שוב לקביעת הרדיוס, או הזינו אותו במאפיינים",
-        );
+        const center = getOrCreatePoint(cp, objects),
+          centerPoint = center.next.find(
+            (candidate): candidate is PointObject =>
+              candidate.type === "point" && candidate.id === center.id,
+          )!;
+        if (center.next !== objects) pushObjects(center.next);
+        setPending({ ...centerPoint, pointId: center.id });
+        if (tool === "circleRadius") {
+          setRadiusInput(String(gridStep));
+          setRadiusDialogOpen(true);
+          setFeedback(null);
+        } else setFeedback("בחרו נקודה על המעגל");
         return;
       }
+      if (tool === "circleRadius") return;
       const center = getOrCreatePoint(pending, objects),
-        through = tool === "circle" ? getOrCreatePoint(cp, center.next) : null,
-        r = Math.max(gridStep * 0.1, distance(pending, cp));
+        through = getOrCreatePoint(cp, center.next);
+      if (distance(pending, cp) < 1e-9) {
+        setFeedback("הנקודה שעל המעגל חייבת להיות שונה מנקודת המרכז");
+        return;
+      }
       const o: CircleObject = {
         id: uid(),
         type: "circle",
-        name: `מעגל ${objects.filter((x) => x.type === "circle").length + 1}`,
+        name: `מעגל ${center.next.find((x) => x.type === "point" && x.id === center.id)?.name ?? ""}`,
         center: pending,
         centerId: center.id,
-        through: tool === "circle" ? cp : undefined,
+        through: cp,
         throughId: through?.id,
-        radius: tool === "circleRadius" ? r : undefined,
         color: COLORS[5],
         fill: false,
         showCenter: true,
@@ -1851,7 +1936,7 @@ export default function CoordinateWorkspace() {
         strokeWidth: 2.5,
         strokeStyle: "solid",
       };
-      pushObjects([...(through?.next ?? center.next), o]);
+      pushObjects([...through.next, o]);
       setPending(null);
       setSelectedId(o.id);
       setOpenPropertiesId(o.id);
@@ -1883,7 +1968,7 @@ export default function CoordinateWorkspace() {
       const o: CircleObject = {
         id: uid(),
         type: "circle",
-        name: `מעגל ${objects.filter((x) => x.type === "circle").length + 1}`,
+        name: `מעגל ${a.name}${b.name}${c.name}`,
         center: data.center,
         radius: data.r,
         threePointIds: [next[0], next[1], next[2]],
@@ -2275,6 +2360,41 @@ export default function CoordinateWorkspace() {
     );
     setFeedback(`המחוון ${name} נוסף. אפשר להשתמש בו כעת בפונקציה`);
   };
+  const createCircleFromRadius = () => {
+    const radius = Number(radiusInput);
+    if (!pending || !Number.isFinite(radius) || radius <= 0) {
+      setFeedback("יש להזין רדיוס חיובי");
+      return;
+    }
+    const center = getOrCreatePoint(pending, objects),
+      centerName = center.next.find(
+        (candidate) => candidate.type === "point" && candidate.id === center.id,
+      )?.name,
+      circle: CircleObject = {
+        id: uid(),
+        type: "circle",
+        name: `מעגל ${centerName ?? ""}`,
+        center: pending,
+        centerId: center.id,
+        radius,
+        color: COLORS[5],
+        fill: false,
+        showCenter: true,
+        showRadius: true,
+        showDiameter: false,
+        showCircumference: true,
+        showArea: true,
+        strokeWidth: 2.5,
+        strokeStyle: "solid",
+      };
+    pushObjects([...center.next, circle]);
+    setPending(null);
+    setRadiusDialogOpen(false);
+    setSelectedId(circle.id);
+    setOpenPropertiesId(circle.id);
+    setTool("select");
+    setFeedback(null);
+  };
   const updateSelected = (patch: Record<string, unknown>) => {
     if (selected)
       pushObjects(
@@ -2304,8 +2424,7 @@ export default function CoordinateWorkspace() {
     }
     const nextName = selected.type === "slider" ? value.toLowerCase() : value;
     const oldSliderName = selected.type === "slider" ? selected.name : null;
-    pushObjects(
-      objects.map((o) => {
+    const renamed = objects.map((o) => {
         if (o.id === selected.id)
           return { ...o, name: nextName } as MathObject;
         if (o.type === "function" && oldSliderName) {
@@ -2318,7 +2437,15 @@ export default function CoordinateWorkspace() {
         }
         return o;
       }),
-    );
+      synchronized = renamed.map((object) =>
+        hasDerivedName(object)
+          ? ({
+              ...object,
+              name: derivedObjectName(object, renamed),
+            } as MathObject)
+          : object,
+      );
+    pushObjects(synchronized);
   };
   const removeSelected = () => {
     if (!selected) return;
@@ -2609,12 +2736,36 @@ export default function CoordinateWorkspace() {
               ×
             </button>
           </div>
-          <ToolSection
-            title="כלים כלליים"
-            open={sections.general}
-            onToggle={() => toggleSection("general")}
-          >
-            <div className="tool-grid single-tool">
+          <div className="workspace-controls">
+            <label className="field-label" htmlFor="workspace-mode">
+              סביבת עבודה
+            </label>
+            <select
+              id="workspace-mode"
+              value={mode}
+              onChange={(e) => {
+                const nextMode = e.target.value as Mode;
+                setMode(nextMode);
+                setSections(MODE_DEFAULT_SECTIONS[nextMode]);
+                if (nextMode === "linear") {
+                  setFunctionKind("linear");
+                  setEquation(FUNCTION_COPY.linear.example);
+                  setEquationLatex(FUNCTION_COPY.linear.example);
+                }
+                chooseTool("select");
+              }}
+            >
+              {Object.entries(MODES).map(([key, m]) => (
+                <option key={key} value={key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <p className="mode-description">
+              {MODES[mode].description}
+              <small>{MODES[mode].grade}</small>
+            </p>
+            <div className="persistent-select-tool">
               <button
                 className={tool === "select" ? "active" : ""}
                 onClick={() => chooseTool("select")}
@@ -2623,35 +2774,7 @@ export default function CoordinateWorkspace() {
                 {TOOL_META.select.label}
               </button>
             </div>
-          </ToolSection>
-          <label className="field-label" htmlFor="workspace-mode">
-            סביבת עבודה
-          </label>
-          <select
-            id="workspace-mode"
-            value={mode}
-            onChange={(e) => {
-              const nextMode = e.target.value as Mode;
-              setMode(nextMode);
-              setSections(MODE_DEFAULT_SECTIONS[nextMode]);
-              if (nextMode === "linear") {
-                setFunctionKind("linear");
-                setEquation(FUNCTION_COPY.linear.example);
-                setEquationLatex(FUNCTION_COPY.linear.example);
-              }
-              chooseTool("select");
-            }}
-          >
-            {Object.entries(MODES).map(([key, m]) => (
-              <option key={key} value={key}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <p className="mode-description">
-            {MODES[mode].description}
-            <small>{MODES[mode].grade}</small>
-          </p>
+          </div>
           <ToolSection
             title="תצוגת המישור"
             open={sections.view}
@@ -3060,7 +3183,7 @@ export default function CoordinateWorkspace() {
                       ) : o.type === "slider" ? (
                         `${o.name} = ${round(o.value, 4)}`
                       ) : (
-                        o.name
+                        derivedObjectName(o, objects)
                       )}
                     </span>
                   </button>
@@ -3081,14 +3204,22 @@ export default function CoordinateWorkspace() {
                       <div className="properties-title">
                         <strong>מאפייני האובייקט</strong>
                       </div>
-                      <label className="name-field">
-                        שם האובייקט
-                        <input
-                          defaultValue={selected.name}
-                          key={`${selected.id}-${selected.name}`}
-                          onBlur={(e) => renameSelected(e.target.value)}
-                        />
-                      </label>
+                      {hasDerivedName(selected) ? (
+                        <div className="name-field name-field-readonly">
+                          <span>שם האובייקט</span>
+                          <strong>{derivedObjectName(selected, objects)}</strong>
+                          <small>השם נקבע לפי נקודות הבנייה</small>
+                        </div>
+                      ) : (
+                        <label className="name-field">
+                          שם האובייקט
+                          <input
+                            defaultValue={selected.name}
+                            key={`${selected.id}-${selected.name}`}
+                            onBlur={(e) => renameSelected(e.target.value)}
+                          />
+                        </label>
+                      )}
                       <label className="toggle">
                         <input
                           type="checkbox"
@@ -3607,6 +3738,61 @@ export default function CoordinateWorkspace() {
           </div>
         </aside>
       </section>
+      <div
+        className={`keyboard-backdrop ${radiusDialogOpen ? "open" : ""}`}
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) {
+            setRadiusDialogOpen(false);
+            setPending(null);
+          }
+        }}
+      >
+        <section className="radius-dialog" role="dialog" aria-modal="true">
+          <header>
+            <div>
+              <strong>קביעת רדיוס המעגל</strong>
+              <span>הזינו ערך חיובי עבור הרדיוס</span>
+            </div>
+            <button
+              aria-label="סגירה"
+              onClick={() => {
+                setRadiusDialogOpen(false);
+                setPending(null);
+              }}
+            >
+              ×
+            </button>
+          </header>
+          <label>
+            רדיוס
+            <input
+              autoFocus
+              type="number"
+              min="0.0001"
+              step="any"
+              value={radiusInput}
+              onChange={(e) => setRadiusInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") createCircleFromRadius();
+              }}
+            />
+          </label>
+          <div className="keyboard-actions">
+            <button
+              className="secondary"
+              onClick={() => {
+                setRadiusDialogOpen(false);
+                setPending(null);
+              }}
+            >
+              ביטול
+            </button>
+            <button className="primary" onClick={createCircleFromRadius}>
+              יצירת המעגל
+            </button>
+          </div>
+        </section>
+      </div>
       <div
         className={`keyboard-backdrop ${keyboardOpen ? "open" : ""}`}
         onMouseDown={(e) => {
