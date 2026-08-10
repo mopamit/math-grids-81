@@ -30,7 +30,8 @@
       mathLiveReady = import('./mathlive/mathlive.min.mjs')
         .then((module) => {
           if (module.MathfieldElement) {
-            module.MathfieldElement.fontsDirectory = './mathlive/fonts';
+            // The path is resolved relative to mathlive.min.mjs itself.
+            module.MathfieldElement.fontsDirectory = './fonts';
             module.MathfieldElement.soundsDirectory = null;
           }
           return module;

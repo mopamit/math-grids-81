@@ -1,8 +1,2 @@
 include:
-  - assets
-  - not-found
-  - __next.__PAGE__.txt
-  - __next._full.txt
-  - __next._head.txt
-  - __next._index.txt
-  - __next._tree.txt
+  - _next
