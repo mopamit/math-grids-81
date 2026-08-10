@@ -52,6 +52,17 @@ type ConstructionPoint = Point & {
   name?: string;
   functionId?: string;
 };
+type LabelHitbox = {
+  objectId: string;
+  key: string;
+  anchorX: number;
+  anchorY: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+type IntersectionCandidate = Point & { sourceIds: [string, string] };
 
 const MODES: Record<
   Mode,
@@ -254,6 +265,11 @@ const derivedObjectName = (
     allObjects.find((candidate) => candidate.type === "point" && candidate.id === id)
       ?.name;
   if (object.type === "segment" || object.type === "line") {
+    if (object.construction?.kind === "median") {
+      const a = pointName(object.aId),
+        b = pointName(object.bId);
+      return a && b ? `תיכון ${a}${b}` : "תיכון במשולש";
+    }
     if (
       object.construction?.kind === "parallel" ||
       object.construction?.kind === "perpendicular"
@@ -306,6 +322,41 @@ const derivedObjectName = (
     const center = pointName(object.centerId);
     return center ? `מעגל ${center}` : object.name;
   }
+  return object.name;
+};
+
+const objectSummary = (object: MathObject, allObjects: MathObject[]) => {
+  const name = derivedObjectName(object, allObjects);
+  const pointByName = (id?: string) =>
+    allObjects.find(
+      (candidate): candidate is PointObject =>
+        candidate.type === "point" && candidate.id === id,
+    );
+  if (object.type === "point")
+    return `נקודה ${object.name} (${round(object.x)}, ${round(object.y)})`;
+  if (object.type === "segment") {
+    const a = pointByName(object.aId) ?? object.a,
+      b = pointByName(object.bId) ?? object.b,
+      kind = object.construction?.kind === "median" ? "תיכון" : "קטע";
+    return `${kind} ${name.replace(/^תיכון\s+/, "")} — d=${round(distance(a, b))}`;
+  }
+  if (object.type === "line") return `ישר ${name}`;
+  if (object.type === "angle") {
+    const a = pointByName(object.aId),
+      v = pointByName(object.vertexId),
+      c = pointByName(object.cId);
+    return a && v && c
+      ? `זווית ${name} — ${round(angleDegrees(a, v, c), 1)}°`
+      : `זווית ${name}`;
+  }
+  if (object.type === "polygon") {
+    const count = object.pointIds.length,
+      kind = count === 3 ? "משולש" : count === 4 ? "מרובע" : "מצולע";
+    return `${kind} ${name}`;
+  }
+  if (object.type === "circle") return name;
+  if (object.type === "slider") return `מחוון ${object.name} = ${round(object.value, 4)}`;
+  if (object.type === "function") return object.expression;
   return object.name;
 };
 
@@ -470,7 +521,8 @@ const valuesAreQuadratic = (evaluate: (x: number) => number) => {
 export default function CoordinateWorkspace() {
   const canvasRef = useRef<HTMLCanvasElement>(null),
     wrapRef = useRef<HTMLDivElement>(null),
-    keyboardHostRef = useRef<HTMLDivElement>(null);
+    keyboardHostRef = useRef<HTMLDivElement>(null),
+    labelHitboxesRef = useRef<LabelHitbox[]>([]);
   const keyboardFieldRef = useRef<MathKeyboardElement | null>(null),
     dragStartObjectsRef = useRef<MathObject[] | null>(null);
   const [objects, setObjects] = useState<MathObject[]>([]),
@@ -496,10 +548,13 @@ export default function CoordinateWorkspace() {
   const [anglePending, setAnglePending] = useState<string[]>([]),
     [polygonPending, setPolygonPending] = useState<string[]>([]),
     [objectPending, setObjectPending] = useState<string | null>(null),
-    [pointer, setPointer] = useState<Point | null>(null);
+    [pointer, setPointer] = useState<Point | null>(null),
+    [intersectionCandidates, setIntersectionCandidates] = useState<IntersectionCandidate[]>([]);
   const [dragging, setDragging] = useState<{
-      kind: "pan" | "point";
+      kind: "pan" | "point" | "label";
       id?: string;
+      labelKey?: string;
+      startOffset?: Point;
       sx: number;
       sy: number;
       origin: Viewport;
@@ -543,6 +598,7 @@ export default function CoordinateWorkspace() {
     setAnglePending([]);
     setPolygonPending([]);
     setObjectPending(null);
+    setIntersectionCandidates([]);
     setRadiusDialogOpen(false);
     setFeedback(null);
   };
@@ -818,21 +874,37 @@ export default function CoordinateWorkspace() {
     x: number,
     y: number,
     color: string,
+    objectId: string,
+    key: string,
   ) => {
+    const object = objects.find((candidate) => candidate.id === objectId),
+      offset = object?.labelOffsets?.[key] ?? { x: 0, y: 0 },
+      drawX = x + offset.x,
+      drawY = y + offset.y;
     ctx.save();
     ctx.font = '600 14px "Latin Modern Math",serif';
     const width = ctx.measureText(text).width + 14;
     ctx.fillStyle = "rgba(255,255,255,.95)";
     ctx.strokeStyle = color + "66";
     ctx.beginPath();
-    ctx.roundRect(x - width / 2, y - 13, width, 26, 7);
+    ctx.roundRect(drawX - width / 2, drawY - 13, width, 26, 7);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = color;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, x, y);
+    ctx.fillText(text, drawX, drawY);
     ctx.restore();
+    labelHitboxesRef.current.push({
+      objectId,
+      key,
+      anchorX: x,
+      anchorY: y,
+      x: drawX - width / 2,
+      y: drawY - 13,
+      width,
+      height: 26,
+    });
   };
 
   const lineEquation = (a: Point, b: Point) => {
@@ -871,6 +943,7 @@ export default function CoordinateWorkspace() {
     ctx.direction = "ltr";
     const w = rect.width,
       h = rect.height;
+    labelHitboxesRef.current = [];
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, w, h);
@@ -990,6 +1063,8 @@ export default function CoordinateWorkspace() {
               (p.x + q.x) / 2,
               (p.y + q.y) / 2,
               o.color,
+              o.id,
+              `length-${i}`,
             );
           });
         const center = screens.reduce(
@@ -1004,7 +1079,7 @@ export default function CoordinateWorkspace() {
           labels.push(`p=${round(polygonPerimeter(pts))}`);
         if (o.showArea) labels.push(`s=${round(polygonArea(pts))}`);
         if (labels.length)
-          drawLabel(ctx, labels.join(" · "), center.x, center.y, o.color);
+          drawLabel(ctx, labels.join(" · "), center.x, center.y, o.color, o.id, "summary");
         if (o.showAngles)
           pts.forEach((p, i) => {
             const prev = pts[(i - 1 + pts.length) % pts.length],
@@ -1016,6 +1091,8 @@ export default function CoordinateWorkspace() {
               screen.x + 18,
               screen.y - 18,
               o.color,
+              o.id,
+              `angle-${i}`,
             );
           });
       });
@@ -1058,7 +1135,7 @@ export default function CoordinateWorkspace() {
         if (o.showCircumference) labels.push(`p=${round(2 * Math.PI * r)}`);
         if (o.showArea) labels.push(`s=${round(Math.PI * r * r)}`);
         if (labels.length)
-          drawLabel(ctx, labels.join(" · "), p.x, p.y - rp - 18, o.color);
+          drawLabel(ctx, labels.join(" · "), p.x, p.y - rp - 18, o.color, o.id, "summary");
       });
     objects
       .filter((o): o is FunctionObject => o.type === "function" && !o.hidden)
@@ -1112,6 +1189,8 @@ export default function CoordinateWorkspace() {
             label.x,
             label.y,
             o.color,
+            o.id,
+            "equation",
           );
         for (const side of ["min", "max"] as const) {
           const x = side === "min" ? o.domainMin : o.domainMax;
@@ -1166,6 +1245,8 @@ export default function CoordinateWorkspace() {
             (a.x + b.x) / 2,
             (a.y + b.y) / 2,
             o.color,
+            o.id,
+            "measurement",
           );
       });
     objects
@@ -1233,6 +1314,8 @@ export default function CoordinateWorkspace() {
             pv.x + Math.cos(mid) * 52,
             pv.y + Math.sin(mid) * 52,
             o.color,
+            o.id,
+            "measure",
           );
         }
       });
@@ -1265,12 +1348,46 @@ export default function CoordinateWorkspace() {
         if (o.showCoords)
           label += (label ? " " : "") + `(${round(o.x)}, ${round(o.y)})`;
         if (label) {
+          const offset = o.labelOffsets?.point ?? { x: 0, y: 0 },
+            labelX = p.x + 10 + offset.x,
+            labelY = p.y - 12 + offset.y;
           ctx.fillStyle = o.color;
           ctx.font = '600 15px "Latin Modern Math",serif';
           ctx.textAlign = "left";
-          ctx.fillText(label, p.x + 10, p.y - 12);
+          ctx.fillText(label, labelX, labelY);
+          const metrics = ctx.measureText(label),
+            width = Math.max(16, metrics.width);
+          labelHitboxesRef.current.push({
+            objectId: o.id,
+            key: "point",
+            anchorX: p.x + 10,
+            anchorY: p.y - 12,
+            x: labelX - 4,
+            y: labelY - 16,
+            width: width + 8,
+            height: 22,
+          });
         }
       });
+    if (intersectionCandidates.length) {
+      intersectionCandidates.forEach((candidate, index) => {
+        const p = worldToScreen(candidate.x, candidate.y, w, h);
+        ctx.save();
+        ctx.fillStyle = "rgba(220,38,38,.16)";
+        ctx.strokeStyle = "#dc2626";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#dc2626";
+        ctx.font = "700 12px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(index + 1), p.x, p.y);
+        ctx.restore();
+      });
+    }
     if (
       pointer &&
       magneticTarget &&
@@ -1361,6 +1478,7 @@ export default function CoordinateWorkspace() {
     dragging,
     expressionEvaluator,
     gridStep,
+    intersectionCandidates,
     magneticTarget,
     objects,
     pending,
@@ -1615,7 +1733,11 @@ export default function CoordinateWorkspace() {
     setTool("select");
   };
 
-  const addIntersections = (first: MathObject, second: MathObject) => {
+  const addIntersections = (
+    first: MathObject,
+    second: MathObject,
+    collectOnly = false,
+  ): Point[] => {
     let points: Point[] = [];
     const isLine = (o: MathObject): o is SegmentObject =>
       o.type === "line" || o.type === "segment";
@@ -1628,6 +1750,68 @@ export default function CoordinateWorkspace() {
         point.y >= Math.min(ends.a.y, ends.b.y) - 1e-7 &&
         point.y <= Math.max(ends.a.y, ends.b.y) + 1e-7
       );
+    };
+    const boundaryParts = (object: MathObject): MathObject[] => {
+      if (object.type === "polygon") {
+        const points = polygonPoints(object);
+        return points.map((point, index) => {
+          const next = points[(index + 1) % points.length];
+          return {
+            id: `${object.id}-edge-${index}`,
+            type: "segment",
+            name: `${point.name}${next.name}`,
+            a: point,
+            b: next,
+            aId: point.id,
+            bId: next.id,
+            color: object.color,
+            showLength: false,
+            showSlope: false,
+            showLabel: false,
+            strokeWidth: object.strokeWidth,
+            strokeStyle: object.strokeStyle,
+          } satisfies SegmentObject;
+        });
+      }
+      if (object.type === "angle") {
+        const a = pointById(object.aId),
+          vertex = pointById(object.vertexId),
+          c = pointById(object.cId);
+        if (!a || !vertex || !c) return [];
+        return [
+          {
+            id: `${object.id}-ray-a`,
+            type: "segment",
+            name: `${vertex.name}${a.name}`,
+            a: vertex,
+            b: a,
+            aId: vertex.id,
+            bId: a.id,
+            color: object.color,
+            showLength: false,
+            showSlope: false,
+            showLabel: false,
+            strokeWidth: object.strokeWidth,
+            strokeStyle: object.strokeStyle,
+          } satisfies SegmentObject,
+          {
+            id: `${object.id}-ray-c`,
+            type: "segment",
+            name: `${vertex.name}${c.name}`,
+            a: vertex,
+            b: c,
+            aId: vertex.id,
+            bId: c.id,
+            color: object.color,
+            showLength: false,
+            showSlope: false,
+            showLabel: false,
+            strokeWidth: object.strokeWidth,
+            strokeStyle: object.strokeStyle,
+          } satisfies SegmentObject,
+        ];
+      }
+      return [object];
     };
     const functionRange = (fn: FunctionObject) => ({
       min: fn.domainMin ?? viewport.centerX - 20,
@@ -1642,7 +1826,9 @@ export default function CoordinateWorkspace() {
       const span = Math.max(0.001, max - min);
       const step = Math.max(0.002, span / 1600);
       let previousX = min,
-        previousValue = evaluate(min);
+        previousValue = evaluate(min),
+        beforePreviousValue = previousValue,
+        beforePreviousX = previousX;
       for (let x = min + step; x <= max + step / 2; x += step) {
         const currentX = Math.min(x, max),
           value = evaluate(currentX);
@@ -1669,6 +1855,26 @@ export default function CoordinateWorkspace() {
           const root = (lo + hi) / 2;
           if (Math.abs(evaluate(root)) < 1e-4) roots.push(root);
         }
+        if (
+          Number.isFinite(beforePreviousValue) &&
+          Number.isFinite(previousValue) &&
+          Number.isFinite(value) &&
+          Math.abs(previousValue) <= Math.abs(beforePreviousValue) &&
+          Math.abs(previousValue) <= Math.abs(value)
+        ) {
+          let lo = beforePreviousX,
+            hi = currentX;
+          for (let iteration = 0; iteration < 36; iteration++) {
+            const left = lo + (hi - lo) / 3,
+              right = hi - (hi - lo) / 3;
+            if (Math.abs(evaluate(left)) <= Math.abs(evaluate(right))) hi = right;
+            else lo = left;
+          }
+          const candidate = (lo + hi) / 2;
+          if (Math.abs(evaluate(candidate)) < 1e-5) roots.push(candidate);
+        }
+        beforePreviousX = previousX;
+        beforePreviousValue = previousValue;
         previousX = currentX;
         previousValue = value;
       }
@@ -1678,7 +1884,18 @@ export default function CoordinateWorkspace() {
           index,
       );
     };
-    if (isLine(first) && isLine(second)) {
+    if (
+      first.type === "polygon" ||
+      second.type === "polygon" ||
+      first.type === "angle" ||
+      second.type === "angle"
+    ) {
+      const firstParts = boundaryParts(first),
+        secondParts = boundaryParts(second);
+      points = firstParts.flatMap((a) =>
+        secondParts.flatMap((b) => addIntersections(a, b, true)),
+      );
+    } else if (isLine(first) && isLine(second)) {
       const a = segmentPoints(first),
         b = segmentPoints(second),
         p = lineIntersection(a.a, a.b, b.a, b.b);
@@ -1762,9 +1979,26 @@ export default function CoordinateWorkspace() {
           }));
       } catch {}
     }
+    points = points.filter(
+      (point, index, all) =>
+        all.findIndex((candidate) => distance(candidate, point) < 1e-5) === index,
+    );
+    if (collectOnly) return points;
     if (!points.length) {
       setFeedback("לא נמצאו נקודות חיתוך בין שני האובייקטים");
-      return;
+      return [];
+    }
+    if (points.length > 1) {
+      setIntersectionCandidates(
+        points.map((point) => ({
+          ...point,
+          sourceIds: [first.id, second.id] as [string, string],
+        })),
+      );
+      setFeedback(
+        `נמצאו ${points.length} נקודות חיתוך — לחצו על הנקודה הרצויה המסומנת באדום`,
+      );
+      return points;
     }
     let next = objects;
     const created: PointObject[] = points.map((p) => {
@@ -1787,6 +2021,69 @@ export default function CoordinateWorkspace() {
     setOpenPropertiesId(created[0].id);
     setFeedback(`נוצרו ${created.length} נקודות חיתוך`);
     setObjectPending(null);
+    return points;
+  };
+
+  const createAngleBisector = (
+    aId: string,
+    vertexId: string,
+    cId: string,
+    angleId?: string,
+  ) => {
+    const a = pointById(aId),
+      vertex = pointById(vertexId),
+      c = pointById(cId);
+    if (!a || !vertex || !c || a.id === vertex.id || c.id === vertex.id || a.id === c.id) {
+      setFeedback("חוצה זווית דורש שלוש נקודות שונות; הנקודה האמצעית היא הקודקוד");
+      return false;
+    }
+    const firstLength = distance(a, vertex),
+      secondLength = distance(c, vertex);
+    if (firstLength < 1e-9 || secondLength < 1e-9) {
+      setFeedback("לא ניתן ליצור חוצה לזווית שגודלה אפס");
+      return false;
+    }
+    const firstUnit = {
+        x: (a.x - vertex.x) / firstLength,
+        y: (a.y - vertex.y) / firstLength,
+      },
+      secondUnit = {
+        x: (c.x - vertex.x) / secondLength,
+        y: (c.y - vertex.y) / secondLength,
+      },
+      direction = {
+        x: firstUnit.x + secondUnit.x,
+        y: firstUnit.y + secondUnit.y,
+      };
+    if (Math.hypot(direction.x, direction.y) < 1e-8) {
+      setFeedback("שתי השוקיים נמצאות על ישר אחד ולכן אינן מגדירות חוצה פנימי יחיד");
+      return false;
+    }
+    const line: SegmentObject = {
+      id: uid(),
+      type: "line",
+      name: `חוצה זווית ${a.name}${vertex.name}${c.name}`,
+      a: vertex,
+      b: { x: vertex.x + direction.x, y: vertex.y + direction.y },
+      aId: vertex.id,
+      color: COLORS[3],
+      showLength: false,
+      showSlope: false,
+      showLabel: false,
+      strokeWidth: 2.5,
+      strokeStyle: "dashed",
+      construction: angleId
+        ? { kind: "angleBisector", angleId }
+        : { kind: "angleBisector", aId, vertexId, cId },
+    };
+    pushObjects([...objects, line]);
+    setSelectedId(line.id);
+    setOpenPropertiesId(line.id);
+    setObjectPending(null);
+    setAnglePending([]);
+    setFeedback(null);
+    setTool("select");
+    return true;
   };
 
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1808,6 +2105,34 @@ export default function CoordinateWorkspace() {
               : undefined,
           };
     setMagneticTarget(magnet?.name ?? null);
+    if (tool === "intersection" && intersectionCandidates.length) {
+      const candidate = intersectionCandidates.find((item) => {
+        const screen = worldToScreen(item.x, item.y, p.w, p.h);
+        return Math.hypot(screen.x - p.x, screen.y - p.y) <= 18;
+      });
+      if (!candidate) {
+        setFeedback("לחצו על אחת מנקודות החיתוך המסומנות באדום");
+        return;
+      }
+      const created: PointObject = {
+        id: uid(),
+        type: "point",
+        name: nextPointName(objects),
+        x: candidate.x,
+        y: candidate.y,
+        color: COLORS[2],
+        showName: true,
+        showCoords: true,
+        guides: false,
+      };
+      pushObjects([...objects, created]);
+      setSelectedId(created.id);
+      setOpenPropertiesId(created.id);
+      setIntersectionCandidates([]);
+      setObjectPending(null);
+      setFeedback("נקודת החיתוך שנבחרה נוספה למישור");
+      return;
+    }
     if (tool === "pan" || e.button === 1 || e.altKey) {
       setDragging({
         kind: "pan",
@@ -1818,6 +2143,31 @@ export default function CoordinateWorkspace() {
       return;
     }
     if (tool === "select") {
+      const label = [...labelHitboxesRef.current]
+        .reverse()
+        .find(
+          (box) =>
+            p.x >= box.x - 5 &&
+            p.x <= box.x + box.width + 5 &&
+            p.y >= box.y - 5 &&
+            p.y <= box.y + box.height + 5,
+        );
+      if (label) {
+        const owner = objects.find((candidate) => candidate.id === label.objectId),
+          startOffset = owner?.labelOffsets?.[label.key] ?? { x: 0, y: 0 };
+        dragStartObjectsRef.current = objects;
+        setSelectedId(label.objectId);
+        setDragging({
+          kind: "label",
+          id: label.objectId,
+          labelKey: label.key,
+          startOffset,
+          sx: e.clientX,
+          sy: e.clientY,
+          origin: viewport,
+        });
+        return;
+      }
       if (hit) {
         setSelectedId(hit.id);
         setOpenPropertiesId(hit.id);
@@ -2228,6 +2578,11 @@ export default function CoordinateWorkspace() {
           showLabel: false,
           strokeWidth: 2.5,
           strokeStyle: "dashed",
+          construction: {
+            kind: "median",
+            polygonId: poly.id,
+            vertexId: hitPoint.id,
+          },
         };
       pushObjects([...objects, m, seg]);
       setObjectPending(null);
@@ -2238,27 +2593,43 @@ export default function CoordinateWorkspace() {
     }
     if (tool === "angleBisector") {
       if (hit?.type === "angle") {
-        const v = pointById(hit.vertexId)!;
-        const l: SegmentObject = {
-          id: uid(), type: "line", name: `חוצה ${hit.name}`,
-          a: v, b: { x: v.x + 1, y: v.y }, aId: v.id,
-          color: COLORS[3], showLength: false, showSlope: false,
-          showLabel: false, strokeWidth: 2.5, strokeStyle: "dashed",
-          construction: { kind: "angleBisector", angleId: hit.id },
-        };
-        pushObjects([...objects, l]);
-        setSelectedId(l.id);
-        setOpenPropertiesId(l.id);
-        setTool("select");
+        createAngleBisector(hit.aId, hit.vertexId, hit.cId, hit.id);
+        return;
+      }
+      if (anglePending.length) {
+        if (!hitPoint) {
+          setFeedback(
+            anglePending.length === 1
+              ? "בחרו את הקודקוד כנקודה שנייה"
+              : "בחרו נקודה שלישית על השוק השנייה",
+          );
+          return;
+        }
+        if (anglePending.includes(hitPoint.id)) {
+          setFeedback("יש לבחור שלוש נקודות שונות");
+          return;
+        }
+        const next = [...anglePending, hitPoint.id];
+        if (next.length < 3) {
+          setAnglePending(next);
+          setFeedback("כעת בחרו נקודה על השוק השנייה");
+          return;
+        }
+        createAngleBisector(next[0], next[1], next[2]);
+        return;
+      }
+      if (!objectPending && hitPoint) {
+        setAnglePending([hitPoint.id]);
+        setFeedback("בחרו את קודקוד הזווית כנקודה השנייה");
         return;
       }
       if (!objectPending) {
-        if (!hit || (hit.type !== "segment" && hit.type !== "line")) {
-          setFeedback("בחרו את השוק הראשונה של הזווית");
+        if (!hit || (hit.type !== "segment" && hit.type !== "line") || !hit.aId || !hit.bId) {
+          setFeedback("בחרו זווית קיימת, שלוש נקודות, או שוק של הזווית");
           return;
         }
         setObjectPending(hit.id);
-        setFeedback("בחרו את השוק השנייה, או את הקודקוד המשותף");
+        setFeedback("כעת בחרו את הקודקוד שעל השוק");
         return;
       }
       const first = objects.find(
@@ -2266,51 +2637,35 @@ export default function CoordinateWorkspace() {
           (candidate.type === "segment" || candidate.type === "line") &&
           candidate.id === objectPending,
       );
-      if (!first || !first.aId || !first.bId) {
+      if (!first?.aId || !first.bId) {
         setFeedback("השוק הראשונה חייבת להיות מחוברת לשתי נקודות");
         return;
       }
       if (hitPoint && [first.aId, first.bId].includes(hitPoint.id)) {
-        setAnglePending([hitPoint.id]);
-        setFeedback("כעת בחרו את השוק השנייה היוצאת מן הקודקוד");
+        const vertexId = hitPoint.id,
+          firstOtherId = first.aId === vertexId ? first.bId : first.aId,
+          connectedSides = objects.filter(
+            (candidate): candidate is SegmentObject =>
+              (candidate.type === "segment" || candidate.type === "line") &&
+              candidate.id !== first.id &&
+              Boolean(candidate.aId && candidate.bId) &&
+              [candidate.aId, candidate.bId].includes(vertexId),
+          );
+        if (connectedSides.length === 1) {
+          const second = connectedSides[0],
+            secondOtherId = second.aId === vertexId ? second.bId! : second.aId!;
+          createAngleBisector(firstOtherId, vertexId, secondOtherId);
+        } else {
+          setAnglePending([firstOtherId, vertexId]);
+          setFeedback(
+            connectedSides.length
+              ? "יש כמה שוקיים אפשריות — בחרו נקודה על השוק הרצויה"
+              : "בחרו נקודה שלישית על השוק השנייה",
+          );
+        }
         return;
       }
-      if (!hit || (hit.type !== "segment" && hit.type !== "line") || !hit.aId || !hit.bId) {
-        setFeedback("בחרו שוק שנייה המחוברת לאותו קודקוד");
-        return;
-      }
-      const requestedVertex = anglePending[0],
-        shared = requestedVertex && [hit.aId, hit.bId].includes(requestedVertex)
-          ? requestedVertex
-          : [first.aId, first.bId].find((id) => [hit.aId, hit.bId].includes(id));
-      if (!shared) {
-        setFeedback("לשתי השוקיים חייב להיות קודקוד משותף");
-        return;
-      }
-      const aId = first.aId === shared ? first.bId : first.aId,
-        cId = hit.aId === shared ? hit.bId : hit.aId,
-        v = pointById(shared)!;
-      const l: SegmentObject = {
-        id: uid(),
-        type: "line",
-        name: "חוצה זווית",
-        a: v,
-        b: { x: v.x + 1, y: v.y },
-        aId: v.id,
-        color: COLORS[3],
-        showLength: false,
-        showSlope: false,
-        showLabel: false,
-        strokeWidth: 2.5,
-        strokeStyle: "dashed",
-        construction: { kind: "angleBisector", aId, vertexId: shared, cId },
-      };
-      pushObjects([...objects, l]);
-      setSelectedId(l.id);
-      setOpenPropertiesId(l.id);
-      setObjectPending(null);
-      setAnglePending([]);
-      setTool("select");
+      setFeedback("בחרו את הקודקוד שהוא אחד מקצות השוק הראשונה");
       return;
     }
     if (tool === "intersection") {
@@ -2353,6 +2708,35 @@ export default function CoordinateWorkspace() {
           dragging.origin.centerY +
           (e.clientY - dragging.sy) / dragging.origin.scale,
       });
+    } else if (
+      dragging.kind === "label" &&
+      dragging.id &&
+      dragging.labelKey &&
+      dragging.startOffset
+    ) {
+      const raw = {
+          x: dragging.startOffset.x + e.clientX - dragging.sx,
+          y: dragging.startOffset.y + e.clientY - dragging.sy,
+        },
+        length = Math.hypot(raw.x, raw.y),
+        limited =
+          length > 90
+            ? { x: (raw.x * 90) / length, y: (raw.y * 90) / length }
+            : raw;
+      setObjects((current) =>
+        current.map((object) =>
+          object.id === dragging.id
+            ? {
+                ...object,
+                labelOffsets: {
+                  ...object.labelOffsets,
+                  [dragging.labelKey!]: limited,
+                },
+              }
+            : object,
+        ),
+      );
+      setMagneticTarget(null);
     } else if (dragging.id)
       setObjects((os) =>
         os.map((o) =>
@@ -2370,7 +2754,10 @@ export default function CoordinateWorkspace() {
       );
   };
   const onUp = () => {
-    if (dragging?.kind === "point" && dragStartObjectsRef.current) {
+    if (
+      (dragging?.kind === "point" || dragging?.kind === "label") &&
+      dragStartObjectsRef.current
+    ) {
       setHistory((h) => [...h.slice(-49), dragStartObjectsRef.current!]);
       setFuture([]);
     }
@@ -2824,12 +3211,18 @@ export default function CoordinateWorkspace() {
     ].includes(mode);
   const hint = magneticTarget
     ? `מגנט: הצמדה אל ${magneticTarget}`
+    : intersectionCandidates.length
+      ? `נמצאו ${intersectionCandidates.length} נקודות חיתוך — לחצו על המסומנת הרצויה`
     : tool === "polygon"
       ? polygonPending.length
         ? `נבחרו ${polygonPending.length} קודקודים`
         : `בחרו קודקודים לפי הסדר`
       : tool === "angle"
         ? "בחרו שלוש נקודות; השנייה היא קודקוד הזווית"
+        : tool === "angleBisector"
+          ? anglePending.length
+            ? `נבחרו ${anglePending.length} מתוך 3 נקודות; השנייה היא הקודקוד`
+            : "בחרו זווית, שלוש נקודות, או שוק ואז קודקוד"
         : objectPending
           ? "השלימו את הבחירה השנייה"
           : pending
@@ -3373,15 +3766,15 @@ export default function CoordinateWorkspace() {
                       title={
                         o.type === "function"
                           ? o.expression
-                          : derivedObjectName(o, objects)
+                          : objectSummary(o, objects)
                       }
                     >
                       {o.type === "function" ? (
                         <MathDisplay latex={o.latex} />
                       ) : o.type === "slider" ? (
-                        `${o.name} = ${round(o.value, 4)}`
+                        objectSummary(o, objects)
                       ) : (
-                        <ObjectNameDisplay object={o} allObjects={objects} />
+                        objectSummary(o, objects)
                       )}
                     </span>
                   </button>

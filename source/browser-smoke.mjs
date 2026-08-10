@@ -89,7 +89,7 @@ const readPointCoordinates = async (name) => {
     const text = await main.evaluate((element) =>
       (element.textContent || "").replace(/\s+/g, " ").trim(),
     );
-    if (text !== name) continue;
+    if (!text.includes(`נקודה ${name}`)) continue;
     await main.click();
     await pause();
     const toggle = await card.$(".object-toggle");
@@ -173,6 +173,17 @@ const visibilityControls = await page.$$(".object-visibility");
 const visibility = visibilityControls.at(-1);
 if (!visibility) errors.push("visibility control missing");
 else {
+  const visibilitySize = await visibility.evaluate((element) => {
+    const dot = element.querySelector("i");
+    const rect = dot?.getBoundingClientRect();
+    return rect ? { width: rect.width, height: rect.height } : null;
+  });
+  if (
+    !visibilitySize ||
+    Math.abs(visibilitySize.width - visibilitySize.height) > 0.5 ||
+    visibilitySize.height > 24
+  )
+    errors.push(`visibility control distorted: ${JSON.stringify(visibilitySize)}`);
   await visibility.click();
   await pause();
   if (!(await visibility.$("i.empty"))) errors.push("hide object failed");
@@ -190,7 +201,7 @@ if ((await objectCount()) !== 9) errors.push(`parallel creation failed: ${await 
 const parallelTexts = await page.$$eval(".object-description", (elements) =>
   elements.map((element) => element.textContent?.replace(/\s+/g, " ").trim()),
 );
-if (!parallelTexts.some((text) => text?.startsWith("מקביל ל־")))
+if (!parallelTexts.some((text) => text?.includes("מקביל ל־")))
   errors.push(`parallel name is unclear: ${parallelTexts.join(" | ")}`);
 
 // Perpendicular through a newly created point.

@@ -1,5 +1,6 @@
 export type StrokeStyle = "solid" | "dashed" | "dotted";
 export type Point = { x: number; y: number };
+export type LabelOffsets = Record<string, Point>;
 
 export type PointObject = {
   id: string;
@@ -12,6 +13,7 @@ export type PointObject = {
   showName: boolean;
   showCoords: boolean;
   guides: boolean;
+  labelOffsets?: LabelOffsets;
   dependency?:
     | { kind: "midpoint"; aId: string; bId: string }
     | { kind: "function"; functionId: string; x: number };
@@ -32,6 +34,7 @@ export type SegmentObject = {
   showLabel: boolean;
   strokeWidth: number;
   strokeStyle: StrokeStyle;
+  labelOffsets?: LabelOffsets;
   construction?:
     | {
         kind: "parallel" | "perpendicular";
@@ -44,6 +47,11 @@ export type SegmentObject = {
         aId?: string;
         vertexId?: string;
         cId?: string;
+      }
+    | {
+        kind: "median";
+        polygonId: string;
+        vertexId: string;
       };
 };
 
@@ -60,6 +68,7 @@ export type FunctionObject = {
   showTable: boolean;
   strokeWidth: number;
   strokeStyle: StrokeStyle;
+  labelOffsets?: LabelOffsets;
   domainMin?: number;
   domainMax?: number;
   minClosed: boolean;
@@ -78,6 +87,7 @@ export type AngleObject = {
   showMeasure: boolean;
   strokeWidth: number;
   strokeStyle: StrokeStyle;
+  labelOffsets?: LabelOffsets;
 };
 
 export type PolygonObject = {
@@ -94,6 +104,7 @@ export type PolygonObject = {
   showArea: boolean;
   strokeWidth: number;
   strokeStyle: StrokeStyle;
+  labelOffsets?: LabelOffsets;
 };
 
 export type CircleObject = {
@@ -116,6 +127,7 @@ export type CircleObject = {
   showArea: boolean;
   strokeWidth: number;
   strokeStyle: StrokeStyle;
+  labelOffsets?: LabelOffsets;
 };
 
 export type SliderObject = {
@@ -128,6 +140,7 @@ export type SliderObject = {
   step: number;
   color: string;
   hidden?: boolean;
+  labelOffsets?: LabelOffsets;
 };
 
 export type MathObject =
