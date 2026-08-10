@@ -39,7 +39,13 @@ type MathKeyboardElement = HTMLElement & {
   getValue: (format: string) => string;
   focus: () => void;
 };
-type Mode = "geometry" | "functions" | "combined";
+type Mode =
+  | "coordinates"
+  | "shapes"
+  | "measurement"
+  | "linear"
+  | "graphs"
+  | "advanced";
 type FunctionKind = "linear" | "quadratic" | "general";
 type ConstructionPoint = Point & {
   pointId?: string;
@@ -47,19 +53,109 @@ type ConstructionPoint = Point & {
   functionId?: string;
 };
 
-const MODES: Record<Mode, { label: string; description: string }> = {
-  geometry: {
-    label: "בנייה ומדידה",
-    description: "צורות, בניות, היקפים ושטחים",
+const MODES: Record<
+  Mode,
+  { label: string; description: string; grade: string }
+> = {
+  coordinates: {
+    label: "נקודות ומערכת צירים",
+    description: "יצירת נקודות, הזנת שיעורים, הזזה וקווי עזר לצירים",
+    grade: "מתאים בעיקר לחטיבת הביניים",
   },
-  functions: {
-    label: "גרפים ופונקציות",
-    description: "פונקציות, מחוונים ותחומים",
+  shapes: {
+    label: "קטעים וצורות",
+    description: "קטעים, ישרים, מצולעים ומעגלים בסיסיים",
+    grade: "מתאים בעיקר לחטיבת הביניים",
   },
-  combined: {
-    label: "חקירה משולבת",
-    description: "כל כלי הגאומטריה והפונקציות",
+  measurement: {
+    label: "מדידה וגאומטריה",
+    description: "אורכים, זוויות, היקף, שטח ובניות גאומטריות",
+    grade: "מתאים בעיקר לכיתות ח׳–י׳",
   },
+  linear: {
+    label: "ישרים ופונקציה קווית",
+    description: "שיפוע, ישרים, חיתוכים ופונקציות מהצורה y=mx+b",
+    grade: "מתאים בעיקר לכיתות ח׳–י׳",
+  },
+  graphs: {
+    label: "פונקציות וגרפים",
+    description: "פונקציות, פרבולות, תחומים, חיתוכים ומחוונים דינמיים",
+    grade: "מתאים בעיקר לכיתות ט׳–י״א",
+  },
+  advanced: {
+    label: "גיאומטריה אנליטית מתקדמת",
+    description: "כלי גאומטריה, מעגלים, חיתוכים וחקירה אנליטית משולבת",
+    grade: "מתאים בעיקר לכיתות י׳–י״ב",
+  },
+};
+
+const MODE_SHAPE_TOOLS: Record<Mode, Tool[]> = {
+  coordinates: ["point"],
+  shapes: [
+    "point",
+    "segment",
+    "line",
+    "polygon",
+    "circle",
+    "circleRadius",
+    "circleThree",
+  ],
+  measurement: [
+    "point",
+    "segment",
+    "line",
+    "angle",
+    "polygon",
+    "circle",
+    "circleRadius",
+    "circleThree",
+  ],
+  linear: ["point", "segment", "line"],
+  graphs: ["point", "line"],
+  advanced: [
+    "point",
+    "segment",
+    "line",
+    "angle",
+    "polygon",
+    "circle",
+    "circleRadius",
+    "circleThree",
+  ],
+};
+
+const MODE_CONSTRUCTION_TOOLS: Record<Mode, Tool[]> = {
+  coordinates: [],
+  shapes: [],
+  measurement: [
+    "midpoint",
+    "parallel",
+    "perpendicular",
+    "perpendicularBisector",
+    "median",
+    "angleBisector",
+    "intersection",
+  ],
+  linear: ["midpoint", "parallel", "perpendicular", "intersection"],
+  graphs: ["intersection"],
+  advanced: [
+    "midpoint",
+    "parallel",
+    "perpendicular",
+    "perpendicularBisector",
+    "median",
+    "angleBisector",
+    "intersection",
+  ],
+};
+
+const MODE_DEFAULT_SECTIONS: Record<Mode, Record<string, boolean>> = {
+  coordinates: { general: true, view: false, shapes: true, constructions: false, functions: false, sliders: false, transform: false },
+  shapes: { general: true, view: false, shapes: true, constructions: false, functions: false, sliders: false, transform: false },
+  measurement: { general: true, view: false, shapes: true, constructions: true, functions: false, sliders: false, transform: false },
+  linear: { general: true, view: false, shapes: true, constructions: false, functions: true, sliders: false, transform: false },
+  graphs: { general: true, view: false, shapes: false, constructions: false, functions: true, sliders: true, transform: false },
+  advanced: { general: true, view: false, shapes: true, constructions: false, functions: true, sliders: false, transform: false },
 };
 const FUNCTION_COPY: Record<
   FunctionKind,
@@ -257,7 +353,7 @@ export default function CoordinateWorkspace() {
     [history, setHistory] = useState<MathObject[][]>([]),
     [future, setFuture] = useState<MathObject[][]>([]);
   const [tool, setTool] = useState<Tool>("point"),
-    [mode, setMode] = useState<Mode>("geometry"),
+    [mode, setMode] = useState<Mode>("coordinates"),
     [selectedId, setSelectedId] = useState<string | null>(null),
     [openPropertiesId, setOpenPropertiesId] = useState<string | null>(null);
   const [viewport, setViewport] = useState<Viewport>({
@@ -291,15 +387,9 @@ export default function CoordinateWorkspace() {
     [editingFunctionId, setEditingFunctionId] = useState<string | null>(null);
   const [leftOpen, setLeftOpen] = useState(true),
     [rightOpen, setRightOpen] = useState(true),
-    [sections, setSections] = useState<Record<string, boolean>>({
-      general: true,
-      shapes: true,
-      constructions: false,
-      view: false,
-      functions: true,
-      sliders: true,
-      transform: false,
-    });
+    [sections, setSections] = useState<Record<string, boolean>>(
+      MODE_DEFAULT_SECTIONS.coordinates,
+    );
   const [sliderName, setSliderName] = useState("a"),
     [sliderMin, setSliderMin] = useState(-5),
     [sliderMax, setSliderMax] = useState(5),
@@ -2376,7 +2466,8 @@ export default function CoordinateWorkspace() {
     setSelectedId(null);
     setOpenPropertiesId(null);
     resetPending();
-    setMode("geometry");
+    setMode("coordinates");
+    setSections(MODE_DEFAULT_SECTIONS.coordinates);
     setTool("point");
     setViewport({ centerX: 0, centerY: 0, scale: scaleForGridStep(1) });
     setGridStep(1);
@@ -2390,8 +2481,11 @@ export default function CoordinateWorkspace() {
       setViewport((x) => ({ ...x, scale: scaleForGridStep(v) }));
     } else setGridStepInput(String(gridStep));
   };
-  const modeAllowsGeometry = mode !== "functions",
-    modeAllowsFunctions = mode !== "geometry";
+  const shapeTools = MODE_SHAPE_TOOLS[mode],
+    constructionTools = MODE_CONSTRUCTION_TOOLS[mode],
+    modeAllowsFunctions = ["linear", "graphs", "advanced"].includes(mode),
+    modeAllowsSliders = ["linear", "graphs", "advanced"].includes(mode),
+    modeAllowsTransform = ["measurement", "advanced"].includes(mode);
   const hint = magneticTarget
     ? `מגנט: הצמדה אל ${magneticTarget}`
     : tool === "polygon"
@@ -2477,8 +2571,15 @@ export default function CoordinateWorkspace() {
             id="workspace-mode"
             value={mode}
             onChange={(e) => {
-              setMode(e.target.value as Mode);
-              chooseTool(e.target.value === "functions" ? "select" : "point");
+              const nextMode = e.target.value as Mode;
+              setMode(nextMode);
+              setSections(MODE_DEFAULT_SECTIONS[nextMode]);
+              if (nextMode === "linear") {
+                setFunctionKind("linear");
+                setEquation(FUNCTION_COPY.linear.example);
+                setEquationLatex(FUNCTION_COPY.linear.example);
+              }
+              chooseTool("point");
             }}
           >
             {Object.entries(MODES).map(([key, m]) => (
@@ -2487,7 +2588,56 @@ export default function CoordinateWorkspace() {
               </option>
             ))}
           </select>
-          <p className="mode-description">{MODES[mode].description}</p>
+          <p className="mode-description">
+            {MODES[mode].description}
+            <small>{MODES[mode].grade}</small>
+          </p>
+          <ToolSection
+            title="תצוגת המישור"
+            open={sections.view}
+            onToggle={() => toggleSection("view")}
+          >
+            <div className="grid-step-control">
+              <div className="step-row">
+                <span>גודל שנתה</span>
+                <input
+                  type="number"
+                  min="0.0001"
+                  step="any"
+                  value={gridStepInput}
+                  onChange={(e) => setGridStepInput(e.target.value)}
+                  onBlur={(e) => applyGridStep(e.target.value)}
+                />
+              </div>
+            </div>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={snap}
+                onChange={(e) => setSnap(e.target.checked)}
+              />
+              <span />
+              הצמדה לרשת
+            </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={showGrid}
+                onChange={(e) => setShowGrid(e.target.checked)}
+              />
+              <span />
+              הצגת רשת
+            </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={showNumbers}
+                onChange={(e) => setShowNumbers(e.target.checked)}
+              />
+              <span />
+              הצגת מספרים
+            </label>
+          </ToolSection>
           <ToolSection
             title="כלים כלליים"
             open={sections.general}
@@ -2506,26 +2656,23 @@ export default function CoordinateWorkspace() {
               ))}
             </div>
           </ToolSection>
-          {modeAllowsGeometry && (
+          {shapeTools.length > 0 && (
             <>
               <ToolSection
-                title="צורות ובנייה"
+                title={
+                  mode === "coordinates"
+                    ? "נקודות"
+                    : mode === "linear" || mode === "graphs"
+                      ? "כלים בסיסיים"
+                      : mode === "advanced"
+                        ? "כלי גאומטריה"
+                        : "קטעים וצורות"
+                }
                 open={sections.shapes}
                 onToggle={() => toggleSection("shapes")}
               >
                 <div className="tool-grid">
-                  {(
-                    [
-                      "point",
-                      "segment",
-                      "line",
-                      "angle",
-                      "polygon",
-                      "circle",
-                      "circleRadius",
-                      "circleThree",
-                    ] as Tool[]
-                  ).map((t) => (
+                  {shapeTools.map((t) => (
                     <button
                       key={t}
                       className={tool === t ? "active" : ""}
@@ -2542,34 +2689,26 @@ export default function CoordinateWorkspace() {
                   </button>
                 )}
               </ToolSection>
-              <ToolSection
-                title="בניות מיוחדות"
-                open={sections.constructions}
-                onToggle={() => toggleSection("constructions")}
-              >
-                <div className="tool-grid">
-                  {(
-                    [
-                      "midpoint",
-                      "parallel",
-                      "perpendicular",
-                      "perpendicularBisector",
-                      "median",
-                      "angleBisector",
-                      "intersection",
-                    ] as Tool[]
-                  ).map((t) => (
-                    <button
-                      key={t}
-                      className={tool === t ? "active" : ""}
-                      onClick={() => chooseTool(t)}
-                    >
-                      <span>{TOOL_META[t].icon}</span>
-                      {TOOL_META[t].label}
-                    </button>
-                  ))}
-                </div>
-              </ToolSection>
+              {constructionTools.length > 0 && (
+                <ToolSection
+                  title={mode === "linear" ? "ישרים ובניות" : "מדידה ובניות"}
+                  open={sections.constructions}
+                  onToggle={() => toggleSection("constructions")}
+                >
+                  <div className="tool-grid">
+                    {constructionTools.map((t) => (
+                      <button
+                        key={t}
+                        className={tool === t ? "active" : ""}
+                        onClick={() => chooseTool(t)}
+                      >
+                        <span>{TOOL_META[t].icon}</span>
+                        {TOOL_META[t].label}
+                      </button>
+                    ))}
+                  </div>
+                </ToolSection>
+              )}
             </>
           )}
           {modeAllowsFunctions && (
@@ -2579,25 +2718,31 @@ export default function CoordinateWorkspace() {
                 open={sections.functions}
                 onToggle={() => toggleSection("functions")}
               >
-                  <label className="field-label" htmlFor="function-kind">
-                    סוג הפונקציה
-                  </label>
-                  <select
-                    id="function-kind"
-                  value={functionKind}
-                  onChange={(e) => {
-                    const k = e.target.value as FunctionKind;
-                    setFunctionKind(k);
-                    setEquation(FUNCTION_COPY[k].example);
-                    setEquationLatex(FUNCTION_COPY[k].example);
-                  }}
-                >
-                  {Object.entries(FUNCTION_COPY).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v.title}
-                    </option>
-                  ))}
-                </select>
+                {mode === "linear" ? (
+                  <p className="fixed-function-kind">פונקציה קווית · y=mx+b</p>
+                ) : (
+                  <>
+                    <label className="field-label" htmlFor="function-kind">
+                      סוג הפונקציה
+                    </label>
+                    <select
+                      id="function-kind"
+                      value={functionKind}
+                      onChange={(e) => {
+                        const k = e.target.value as FunctionKind;
+                        setFunctionKind(k);
+                        setEquation(FUNCTION_COPY[k].example);
+                        setEquationLatex(FUNCTION_COPY[k].example);
+                      }}
+                    >
+                      {Object.entries(FUNCTION_COPY).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v.title}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
                 <button
                   className="open-keyboard"
                   onClick={() => {
@@ -2614,11 +2759,12 @@ export default function CoordinateWorkspace() {
                   {FUNCTION_COPY[functionKind].hint}
                 </p>
               </ToolSection>
-              <ToolSection
-                title="מחוונים דינמיים"
-                open={sections.sliders}
-                onToggle={() => toggleSection("sliders")}
-              >
+              {modeAllowsSliders && (
+                <ToolSection
+                  title="מחוונים דינמיים"
+                  open={sections.sliders}
+                  onToggle={() => toggleSection("sliders")}
+                >
                 <div className="slider-create">
                   <div>
                     <label>
@@ -2704,56 +2850,11 @@ export default function CoordinateWorkspace() {
                     </small>
                   </div>
                 ))}
-              </ToolSection>
+                </ToolSection>
+              )}
             </>
           )}
-          <ToolSection
-            title="תצוגת המישור"
-            open={sections.view}
-            onToggle={() => toggleSection("view")}
-          >
-            <div className="grid-step-control">
-              <div className="step-row">
-                <span>גודל שנתה</span>
-                <input
-                  type="number"
-                  min="0.0001"
-                  step="any"
-                  value={gridStepInput}
-                  onChange={(e) => setGridStepInput(e.target.value)}
-                  onBlur={(e) => applyGridStep(e.target.value)}
-                />
-              </div>
-            </div>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={snap}
-                onChange={(e) => setSnap(e.target.checked)}
-              />
-              <span />
-              הצמדה לרשת
-            </label>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={showGrid}
-                onChange={(e) => setShowGrid(e.target.checked)}
-              />
-              <span />
-              הצגת רשת
-            </label>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={showNumbers}
-                onChange={(e) => setShowNumbers(e.target.checked)}
-              />
-              <span />
-              הצגת מספרים
-            </label>
-          </ToolSection>
-          {modeAllowsGeometry && (
+          {modeAllowsTransform && (
             <ToolSection
               title="טרנספורמציות"
               open={sections.transform}

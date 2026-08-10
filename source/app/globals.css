@@ -895,6 +895,25 @@ select {
   font-size: 10px;
   line-height: 1.45;
 }
+.mode-description small {
+  display: block;
+  margin-top: 3px;
+  color: var(--teal);
+  font-size: 9px;
+  font-weight: 700;
+}
+.fixed-function-kind {
+  margin: 0 0 9px;
+  padding: 8px 10px;
+  border: 1px solid #dbe6e8;
+  border-radius: 8px;
+  background: #f8fbfb;
+  color: #31535b;
+  direction: rtl;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+}
 .tool-section {
   margin: 10px 0;
   border: 1px solid #dbe6e8;
