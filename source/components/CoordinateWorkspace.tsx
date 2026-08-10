@@ -64,7 +64,7 @@ const MODES: Record<
   },
   shapes: {
     label: "קטעים וצורות",
-    description: "קטעים, ישרים, מצולעים ומעגלים בסיסיים",
+    description: "נקודות, קטעים, ישרים ומצולעים",
     grade: "מתאים בעיקר לחטיבת הביניים",
   },
   measurement: {
@@ -91,27 +91,37 @@ const MODES: Record<
 
 const MODE_SHAPE_TOOLS: Record<Mode, Tool[]> = {
   coordinates: ["point"],
-  shapes: [
-    "point",
-    "segment",
-    "line",
-    "polygon",
-    "circle",
-    "circleRadius",
-    "circleThree",
-  ],
+  shapes: ["point", "segment", "line", "polygon"],
   measurement: [
     "point",
     "segment",
     "line",
-    "angle",
     "polygon",
+    "angle",
     "circle",
     "circleRadius",
     "circleThree",
   ],
-  linear: ["point", "segment", "line"],
-  graphs: ["point", "line"],
+  linear: [
+    "point",
+    "segment",
+    "line",
+    "polygon",
+    "angle",
+    "circle",
+    "circleRadius",
+    "circleThree",
+  ],
+  graphs: [
+    "point",
+    "segment",
+    "line",
+    "polygon",
+    "angle",
+    "circle",
+    "circleRadius",
+    "circleThree",
+  ],
   advanced: [
     "point",
     "segment",
@@ -136,8 +146,24 @@ const MODE_CONSTRUCTION_TOOLS: Record<Mode, Tool[]> = {
     "angleBisector",
     "intersection",
   ],
-  linear: ["midpoint", "parallel", "perpendicular", "intersection"],
-  graphs: ["intersection"],
+  linear: [
+    "midpoint",
+    "parallel",
+    "perpendicular",
+    "perpendicularBisector",
+    "median",
+    "angleBisector",
+    "intersection",
+  ],
+  graphs: [
+    "midpoint",
+    "parallel",
+    "perpendicular",
+    "perpendicularBisector",
+    "median",
+    "angleBisector",
+    "intersection",
+  ],
   advanced: [
     "midpoint",
     "parallel",
@@ -152,10 +178,10 @@ const MODE_CONSTRUCTION_TOOLS: Record<Mode, Tool[]> = {
 const MODE_DEFAULT_SECTIONS: Record<Mode, Record<string, boolean>> = {
   coordinates: { general: true, view: false, shapes: true, constructions: false, functions: false, sliders: false, transform: false },
   shapes: { general: true, view: false, shapes: true, constructions: false, functions: false, sliders: false, transform: false },
-  measurement: { general: true, view: false, shapes: true, constructions: true, functions: false, sliders: false, transform: false },
-  linear: { general: true, view: false, shapes: true, constructions: false, functions: true, sliders: false, transform: false },
-  graphs: { general: true, view: false, shapes: false, constructions: false, functions: true, sliders: true, transform: false },
-  advanced: { general: true, view: false, shapes: true, constructions: false, functions: true, sliders: false, transform: false },
+  measurement: { general: true, view: false, shapes: false, constructions: true, functions: false, sliders: false, transform: false },
+  linear: { general: true, view: false, shapes: false, constructions: false, functions: true, sliders: false, transform: false },
+  graphs: { general: true, view: false, shapes: false, constructions: false, functions: true, sliders: false, transform: false },
+  advanced: { general: true, view: false, shapes: false, constructions: false, functions: false, sliders: false, transform: true },
 };
 const FUNCTION_COPY: Record<
   FunctionKind,
@@ -2151,7 +2177,12 @@ export default function CoordinateWorkspace() {
         (o): o is FunctionObject =>
           o.type === "function" && o.id === editingFunctionId,
       ),
-      requestedKind = editing?.functionKind ?? functionKind,
+      detectedKind: FunctionKind = valuesAreLinear(parsed.evaluate)
+        ? "linear"
+        : valuesAreQuadratic(parsed.evaluate)
+          ? "quadratic"
+          : "general",
+      requestedKind = mode === "linear" ? "linear" : detectedKind,
       latex =
         keyboardFieldRef.current?.value || equationLatex || parsed.normalized;
     if (requestedKind === "linear" && !valuesAreLinear(parsed.evaluate)) {
@@ -2168,7 +2199,12 @@ export default function CoordinateWorkspace() {
       pushObjects(
         objects.map((o) =>
           o.id === editing.id
-            ? { ...o, expression: parsed.normalized, latex }
+            ? {
+                ...o,
+                expression: parsed.normalized,
+                latex,
+                functionKind: requestedKind,
+              }
             : o,
         ),
       );
@@ -2190,7 +2226,7 @@ export default function CoordinateWorkspace() {
         name,
         expression: parsed.normalized,
         latex,
-        functionKind,
+        functionKind: requestedKind,
         color: COLORS[2],
         showEquation: true,
         showTable: false,
@@ -2204,6 +2240,7 @@ export default function CoordinateWorkspace() {
     setOpenPropertiesId(o.id);
     setEquation(parsed.normalized);
     setEquationLatex(latex);
+    setFunctionKind(requestedKind);
     setKeyboardOpen(false);
   };
   const addSlider = () => {
@@ -2468,7 +2505,7 @@ export default function CoordinateWorkspace() {
     resetPending();
     setMode("coordinates");
     setSections(MODE_DEFAULT_SECTIONS.coordinates);
-    setTool("point");
+    setTool("select");
     setViewport({ centerX: 0, centerY: 0, scale: scaleForGridStep(1) });
     setGridStep(1);
     setGridStepInput("1");
@@ -2485,7 +2522,12 @@ export default function CoordinateWorkspace() {
     constructionTools = MODE_CONSTRUCTION_TOOLS[mode],
     modeAllowsFunctions = ["linear", "graphs", "advanced"].includes(mode),
     modeAllowsSliders = ["linear", "graphs", "advanced"].includes(mode),
-    modeAllowsTransform = ["measurement", "advanced"].includes(mode);
+    modeAllowsTransform = [
+      "measurement",
+      "linear",
+      "graphs",
+      "advanced",
+    ].includes(mode);
   const hint = magneticTarget
     ? `מגנט: הצמדה אל ${magneticTarget}`
     : tool === "polygon"
@@ -2509,31 +2551,38 @@ export default function CoordinateWorkspace() {
           <img src="./logo-prisming.png" alt="Prismind" />
         </div>
         <div className="workspace-title">
-          <strong>המרחב המתמטי</strong>
           <span>{MODES[mode].label}</span>
         </div>
         <div className="top-actions">
-          <button
-            className="history-action"
-            onClick={redo}
-            disabled={!future.length}
-            title="ביצוע מחדש"
-          >
-            ↶
+          <button className="new-workspace" onClick={resetWorkspace}>
+            ＋ חדש
           </button>
           <button
             className="history-action"
             onClick={undo}
             disabled={!history.length}
-            title="ביטול"
+            title="ביטול פעולה"
+            aria-label="ביטול פעולה"
           >
-            ↷
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 7H5v-4" />
+              <path d="M5 7c2.1-2.2 4.6-3.3 7.5-3.1 4.3.3 7.6 3.9 7.5 8.2-.1 4.4-3.7 7.9-8.1 7.9-3.2 0-6-1.9-7.3-4.6" />
+            </svg>
           </button>
-          <button onClick={fit}>איפוס תצוגה</button>
-          <button onClick={exportPng}>⇩ ייצוא PNG</button>
-          <button className="new-workspace" onClick={resetWorkspace}>
-            ＋ חדש
+          <button
+            className="history-action"
+            onClick={redo}
+            disabled={!future.length}
+            title="ביצוע מחדש"
+            aria-label="ביצוע מחדש"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 7h4v-4" />
+              <path d="M19 7c-2.1-2.2-4.6-3.3-7.5-3.1C7.2 4.2 3.9 7.8 4 12.1c.1 4.4 3.7 7.9 8.1 7.9 3.2 0 6-1.9 7.3-4.6" />
+            </svg>
           </button>
+          <button className="view-reset" onClick={fit}>איפוס תצוגה</button>
+          <button className="export-action" onClick={exportPng}>⇩ ייצוא PNG</button>
         </div>
         <button
           className="mobile-panel"
@@ -2552,11 +2601,7 @@ export default function CoordinateWorkspace() {
       )}
       <section className="workspace">
         <aside className={`side-panel tools-panel ${rightOpen ? "open" : ""}`}>
-          <div className="panel-title">
-            <div>
-              <strong>כלי עבודה</strong>
-              <span>פתחו רק את הקבוצה הדרושה</span>
-            </div>
+          <div className="mobile-panel-head">
             <button
               className="mobile-close"
               onClick={() => setRightOpen(false)}
@@ -2564,6 +2609,21 @@ export default function CoordinateWorkspace() {
               ×
             </button>
           </div>
+          <ToolSection
+            title="כלים כלליים"
+            open={sections.general}
+            onToggle={() => toggleSection("general")}
+          >
+            <div className="tool-grid single-tool">
+              <button
+                className={tool === "select" ? "active" : ""}
+                onClick={() => chooseTool("select")}
+              >
+                <span>{TOOL_META.select.icon}</span>
+                {TOOL_META.select.label}
+              </button>
+            </div>
+          </ToolSection>
           <label className="field-label" htmlFor="workspace-mode">
             סביבת עבודה
           </label>
@@ -2579,7 +2639,7 @@ export default function CoordinateWorkspace() {
                 setEquation(FUNCTION_COPY.linear.example);
                 setEquationLatex(FUNCTION_COPY.linear.example);
               }
-              chooseTool("point");
+              chooseTool("select");
             }}
           >
             {Object.entries(MODES).map(([key, m]) => (
@@ -2637,24 +2697,6 @@ export default function CoordinateWorkspace() {
               <span />
               הצגת מספרים
             </label>
-          </ToolSection>
-          <ToolSection
-            title="כלים כלליים"
-            open={sections.general}
-            onToggle={() => toggleSection("general")}
-          >
-            <div className="tool-grid">
-              {(["select", "pan"] as Tool[]).map((t) => (
-                <button
-                  key={t}
-                  className={tool === t ? "active" : ""}
-                  onClick={() => chooseTool(t)}
-                >
-                  <span>{TOOL_META[t].icon}</span>
-                  {TOOL_META[t].label}
-                </button>
-              ))}
-            </div>
           </ToolSection>
           {shapeTools.length > 0 && (
             <>
@@ -2720,29 +2762,7 @@ export default function CoordinateWorkspace() {
               >
                 {mode === "linear" ? (
                   <p className="fixed-function-kind">פונקציה קווית · y=mx+b</p>
-                ) : (
-                  <>
-                    <label className="field-label" htmlFor="function-kind">
-                      סוג הפונקציה
-                    </label>
-                    <select
-                      id="function-kind"
-                      value={functionKind}
-                      onChange={(e) => {
-                        const k = e.target.value as FunctionKind;
-                        setFunctionKind(k);
-                        setEquation(FUNCTION_COPY[k].example);
-                        setEquationLatex(FUNCTION_COPY[k].example);
-                      }}
-                    >
-                      {Object.entries(FUNCTION_COPY).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v.title}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                )}
+                ) : null}
                 <button
                   className="open-keyboard"
                   onClick={() => {
@@ -2756,7 +2776,9 @@ export default function CoordinateWorkspace() {
                   <b>⌨ הוספת פונקציה</b>
                 </button>
                 <p className="equation-help">
-                  {FUNCTION_COPY[functionKind].hint}
+                  {mode === "linear"
+                    ? FUNCTION_COPY.linear.hint
+                    : "כתבו את הפונקציה הרצויה — סוג הגרף יזוהה אוטומטית"}
                 </p>
               </ToolSection>
               {modeAllowsSliders && (
@@ -3600,12 +3622,16 @@ export default function CoordinateWorkspace() {
               <strong>
                 {editingFunctionId
                   ? "עריכת הפונקציה"
-                  : `הוספת ${FUNCTION_COPY[functionKind].title}`}
+                  : mode === "linear"
+                    ? "הוספת פונקציה קווית"
+                    : "הוספת פונקציה"}
               </strong>
               <span>
                 {editingFunctionId
                   ? "שנו את המשוואה ושמרו"
-                  : FUNCTION_COPY[functionKind].hint}
+                  : mode === "linear"
+                    ? FUNCTION_COPY.linear.hint
+                    : "כתבו פונקציה והמערכת תזהה אוטומטית את סוג הגרף"}
               </span>
             </div>
             <button
