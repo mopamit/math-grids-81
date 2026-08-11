@@ -72,202 +72,6 @@ type LabelHitbox = {
 };
 type IntersectionCandidate = Point & { sourceIds: [string, string] };
 
-function NumberStepper({
-  value,
-  onChange,
-  step = 1,
-  allowEmpty = false,
-  label,
-}: {
-  value?: number;
-  onChange: (value: number | undefined) => void;
-  step?: number;
-  allowEmpty?: boolean;
-  label: string;
-}) {
-  const [draft, setDraft] = useState(value === undefined ? "" : String(value));
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (document.activeElement !== inputRef.current) {
-      setDraft(value === undefined ? "" : String(value));
-    }
-  }, [value]);
-
-  const commit = (raw: string) => {
-    const normalized = raw.trim().replace(",", ".");
-    if (normalized === "" && allowEmpty) {
-      setDraft("");
-      onChange(undefined);
-      return;
-    }
-    const next = Number(normalized);
-    if (Number.isFinite(next)) {
-      setDraft(String(next));
-      onChange(next);
-    } else {
-      setDraft(value === undefined ? "" : String(value));
-    }
-  };
-
-  const adjust = (direction: -1 | 1) => {
-    const current = Number(draft.replace(",", "."));
-    const base = Number.isFinite(current) ? current : (value ?? 0);
-    const next = Number((base + direction * step).toFixed(10));
-    setDraft(String(next));
-    onChange(next);
-  };
-
-  return (
-    <div className="number-stepper" dir="ltr">
-      <button
-        type="button"
-        aria-label={`הקטנת ${label}`}
-        onClick={() => adjust(-1)}
-      >
-        −
-      </button>
-      <input
-        ref={inputRef}
-        type="text"
-        inputMode="decimal"
-        aria-label={label}
-        value={draft}
-        onChange={(event) => {
-          const next = event.target.value;
-          if (/^-?\d*(?:[.,]\d*)?$/.test(next)) setDraft(next);
-        }}
-        onBlur={() => commit(draft)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            commit(draft);
-            inputRef.current?.blur();
-          }
-        }}
-      />
-      <button
-        type="button"
-        aria-label={`הגדלת ${label}`}
-        onClick={() => adjust(1)}
-      >
-        +
-      </button>
-    </div>
-  );
-}
-
-type ExpressionToken = {
-  kind:
-    | "number"
-    | "variable"
-    | "constant"
-    | "function"
-    | "operator"
-    | "open"
-    | "close"
-    | "comma";
-  source: string;
-  javascript: string;
-};
-
-const EXPRESSION_FUNCTIONS: Record<string, string> = {
-  sqrt: "Math.sqrt",
-  abs: "Math.abs",
-  sin: "Math.sin",
-  cos: "Math.cos",
-  tan: "Math.tan",
-  ln: "Math.log",
-  log: "Math.log10",
-  exp: "Math.exp",
-};
-
-const compileExpression = (
-  source: string,
-  variables: Record<string, number>,
-) => {
-  const compact = source.toLowerCase().replace(/\s/g, "");
-  const tokens: ExpressionToken[] = [];
-  let cursor = 0;
-
-  while (cursor < compact.length) {
-    const rest = compact.slice(cursor);
-    const number = rest.match(/^(?:\d+(?:\.\d*)?|\.\d+)/)?.[0];
-    if (number) {
-      tokens.push({ kind: "number", source: number, javascript: number });
-      cursor += number.length;
-      continue;
-    }
-
-    const character = compact[cursor];
-    if ("+-*/^".includes(character)) {
-      tokens.push({
-        kind: "operator",
-        source: character,
-        javascript: character === "^" ? "**" : character,
-      });
-      cursor += 1;
-      continue;
-    }
-    if (character === "(" || character === ")" || character === ",") {
-      const kind =
-        character === "(" ? "open" : character === ")" ? "close" : "comma";
-      tokens.push({ kind, source: character, javascript: character });
-      cursor += 1;
-      continue;
-    }
-
-    if (/^[a-z]$/.test(character)) {
-      const functionName = Object.keys(EXPRESSION_FUNCTIONS).find(
-        (name) => rest.startsWith(name) && rest[name.length] === "(",
-      );
-      if (functionName) {
-        tokens.push({
-          kind: "function",
-          source: functionName,
-          javascript: EXPRESSION_FUNCTIONS[functionName],
-        });
-        cursor += functionName.length;
-        continue;
-      }
-      if (rest.startsWith("pi")) {
-        tokens.push({ kind: "constant", source: "pi", javascript: "Math.PI" });
-        cursor += 2;
-        continue;
-      }
-      if (character === "x" || Object.hasOwn(variables, character)) {
-        tokens.push({
-          kind: "variable",
-          source: character,
-          javascript: character === "x" ? "x" : `vars.${character}`,
-        });
-        cursor += 1;
-        continue;
-      }
-    }
-    throw new Error("symbol");
-  }
-
-  const endsValue = (token: ExpressionToken) =>
-    token.kind === "number" ||
-    token.kind === "variable" ||
-    token.kind === "constant" ||
-    token.kind === "close";
-  const startsValue = (token: ExpressionToken) =>
-    token.kind === "number" ||
-    token.kind === "variable" ||
-    token.kind === "constant" ||
-    token.kind === "function" ||
-    token.kind === "open";
-
-  return tokens
-    .map((token, index) => {
-      const previous = tokens[index - 1];
-      const multiply = previous && endsValue(previous) && startsValue(token);
-      return `${multiply ? "*" : ""}${token.javascript}`;
-    })
-    .join("");
-};
-
 const MODES: Record<
   Mode,
   { label: string; description: string; grade: string }
@@ -867,7 +671,7 @@ export default function CoordinateWorkspace() {
         .toLowerCase()
         .replace(/−/g, "-")
         .replace(/÷/g, "/")
-        .replace(/[·×∗]/g, "*")
+        .replace(/[·×]/g, "*")
         .replace(/\s/g, "")
         .split("=");
       if (sides.length !== 2) throw new Error("equation");
@@ -875,10 +679,46 @@ export default function CoordinateWorkspace() {
         functionMatch = left.match(/^([a-z][a-z0-9_]*)\(x\)$/),
         declaredName = functionMatch?.[1];
       if (left !== "y" && !declaredName) throw new Error("equation");
-      const source = sides[1];
-      if (!/^[0-9a-z+\-*/^().,]+$/.test(source))
+      let expression = sides[1];
+      const allowedFunctions = new Set([
+          "sqrt",
+          "abs",
+          "sin",
+          "cos",
+          "tan",
+          "ln",
+          "log",
+          "exp",
+          "pi",
+        ]),
+        words = expression.match(/[a-z]+/g) ?? [];
+      for (const word of words) {
+        if (
+          word !== "x" &&
+          !allowedFunctions.has(word) &&
+          !(word.length === 1 && Object.hasOwn(variables, word))
+        )
+          throw new Error("symbol");
+      }
+      if (!/^[0-9a-z+\-*/^().,]+$/.test(expression))
         throw new Error("character");
-      const expression = compileExpression(source, variables);
+      expression = expression
+        .replace(/\^/g, "**")
+        .replace(/\bpi\b/g, "Math.PI")
+        .replace(/\bsqrt\b/g, "Math.sqrt")
+        .replace(/\babs\b/g, "Math.abs")
+        .replace(/\bsin\b/g, "Math.sin")
+        .replace(/\bcos\b/g, "Math.cos")
+        .replace(/\btan\b/g, "Math.tan")
+        .replace(/\bln\b/g, "Math.log")
+        .replace(/\blog\b/g, "Math.log10")
+        .replace(/\bexp\b/g, "Math.exp");
+      for (const name of Object.keys(variables))
+        expression = expression.replace(
+          new RegExp(`\\b${name}\\b`, "g"),
+          `vars.${name}`,
+        );
+      expression = expression.replace(/(\d|x|\))(?=(x|\())/g, "$1*");
       const evaluate = new Function(
         "x",
         "vars",
@@ -4406,65 +4246,61 @@ export default function CoordinateWorkspace() {
                             <div>
                               <label>
                                 מ־x
-                                <NumberStepper
-                                  label="קצה שמאלי של התחום"
-                                  value={selected.domainMin}
-                                  allowEmpty
-                                  onChange={(value) =>
+                                <input
+                                  type="number"
+                                  value={selected.domainMin ?? ""}
+                                  onChange={(e) =>
                                     updateSelected({
-                                      domainMin: value,
+                                      domainMin:
+                                        e.target.value === ""
+                                          ? undefined
+                                          : Number(e.target.value),
                                     })
                                   }
                                 />
                               </label>
                               <label>
                                 עד x
-                                <NumberStepper
-                                  label="קצה ימני של התחום"
-                                  value={selected.domainMax}
-                                  allowEmpty
-                                  onChange={(value) =>
+                                <input
+                                  type="number"
+                                  value={selected.domainMax ?? ""}
+                                  onChange={(e) =>
                                     updateSelected({
-                                      domainMax: value,
+                                      domainMax:
+                                        e.target.value === ""
+                                          ? undefined
+                                          : Number(e.target.value),
                                     })
                                   }
                                 />
                               </label>
                             </div>
-                            <div className="domain-toggles">
-                              <label className="toggle">
-                                <input
-                                  type="checkbox"
-                                  checked={selected.minClosed}
-                                  onChange={(e) =>
-                                    updateSelected({
-                                      minClosed: e.target.checked,
-                                    })
-                                  }
-                                />
-                                <span />
-                                <em>
-                                  קצה שמאלי
-                                  <b>{selected.minClosed ? "סגור" : "פתוח"}</b>
-                                </em>
-                              </label>
-                              <label className="toggle">
-                                <input
-                                  type="checkbox"
-                                  checked={selected.maxClosed}
-                                  onChange={(e) =>
-                                    updateSelected({
-                                      maxClosed: e.target.checked,
-                                    })
-                                  }
-                                />
-                                <span />
-                                <em>
-                                  קצה ימני
-                                  <b>{selected.maxClosed ? "סגור" : "פתוח"}</b>
-                                </em>
-                              </label>
-                            </div>
+                            <label className="toggle">
+                              <input
+                                type="checkbox"
+                                checked={selected.minClosed}
+                                onChange={(e) =>
+                                  updateSelected({
+                                    minClosed: e.target.checked,
+                                  })
+                                }
+                              />
+                              <span />
+                              קצה שמאלי סגור
+                            </label>
+                            <label className="toggle">
+                              <input
+                                type="checkbox"
+                                checked={selected.maxClosed}
+                                onChange={(e) =>
+                                  updateSelected({
+                                    maxClosed: e.target.checked,
+                                  })
+                                }
+                              />
+                              <span />
+                              קצה ימני סגור
+                            </label>
                           </div>
                         </>
                       )}
@@ -4472,36 +4308,31 @@ export default function CoordinateWorkspace() {
                         <div className="slider-properties">
                           <label>
                             מינימום
-                            <NumberStepper
-                              label="מינימום המחוון"
+                            <input
+                              type="number"
                               value={selected.min}
-                              step={selected.step}
-                              onChange={(value) =>
-                                value !== undefined && updateSelected({ min: value })
+                              onChange={(e) =>
+                                updateSelected({ min: Number(e.target.value) })
                               }
                             />
                           </label>
                           <label>
                             מקסימום
-                            <NumberStepper
-                              label="מקסימום המחוון"
+                            <input
+                              type="number"
                               value={selected.max}
-                              step={selected.step}
-                              onChange={(value) =>
-                                value !== undefined && updateSelected({ max: value })
+                              onChange={(e) =>
+                                updateSelected({ max: Number(e.target.value) })
                               }
                             />
                           </label>
                           <label>
                             צעד
-                            <NumberStepper
-                              label="צעד המחוון"
+                            <input
+                              type="number"
                               value={selected.step}
-                              step={0.1}
-                              onChange={(value) =>
-                                value !== undefined &&
-                                value > 0 &&
-                                updateSelected({ step: value })
+                              onChange={(e) =>
+                                updateSelected({ step: Number(e.target.value) })
                               }
                             />
                           </label>
