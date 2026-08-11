@@ -21,6 +21,7 @@ import {
   SegmentObject,
   SliderObject,
   StrokeStyle,
+  TextObject,
   Tool,
   Viewport,
   angleDegrees,
@@ -71,6 +72,13 @@ type LabelHitbox = {
   height: number;
 };
 type IntersectionCandidate = Point & { sourceIds: [string, string] };
+type TextHitbox = {
+  objectId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 const MODES: Record<
   Mode,
@@ -240,6 +248,7 @@ const TOOL_META: Record<Tool, { icon: string; label: string }> = {
   median: { icon: "△̸", label: "תיכון במשולש" },
   angleBisector: { icon: "∠̸", label: "חוצה זווית" },
   intersection: { icon: "×", label: "נקודות חיתוך" },
+  text: { icon: "T", label: "טקסט חופשי" },
 };
 const STROKE_STYLES: { value: StrokeStyle; label: string }[] = [
   { value: "solid", label: "רציף" },
@@ -356,6 +365,10 @@ const objectSummary = (object: MathObject, allObjects: MathObject[]) => {
   }
   if (object.type === "circle") return name;
   if (object.type === "slider") return `מחוון ${object.name} = ${round(object.value, 4)}`;
+  if (object.type === "text") {
+    const compact = object.text.replace(/\s+/g, " ").trim();
+    return compact.length > 42 ? `${compact.slice(0, 42)}…` : compact || "טקסט";
+  }
   if (object.type === "function") return object.expression;
   return object.name;
 };
@@ -532,7 +545,8 @@ export default function CoordinateWorkspace() {
   const canvasRef = useRef<HTMLCanvasElement>(null),
     wrapRef = useRef<HTMLDivElement>(null),
     keyboardHostRef = useRef<HTMLDivElement>(null),
-    labelHitboxesRef = useRef<LabelHitbox[]>([]);
+    labelHitboxesRef = useRef<LabelHitbox[]>([]),
+    textHitboxesRef = useRef<TextHitbox[]>([]);
   const keyboardFieldRef = useRef<MathKeyboardElement | null>(null),
     dragStartObjectsRef = useRef<MathObject[] | null>(null);
   const [objects, setObjects] = useState<MathObject[]>([]),
@@ -562,7 +576,7 @@ export default function CoordinateWorkspace() {
     [pointer, setPointer] = useState<Point | null>(null),
     [intersectionCandidates, setIntersectionCandidates] = useState<IntersectionCandidate[]>([]);
   const [dragging, setDragging] = useState<{
-      kind: "pan" | "point" | "label";
+      kind: "pan" | "point" | "label" | "text";
       id?: string;
       labelKey?: string;
       startOffset?: Point;
@@ -587,12 +601,21 @@ export default function CoordinateWorkspace() {
     [sliderMax, setSliderMax] = useState(5),
     [sliderStep, setSliderStep] = useState(0.1),
     [sliderValue, setSliderValue] = useState(1);
+  const [textDraft, setTextDraft] = useState(""),
+    [textSize, setTextSize] = useState(24),
+    [textBold, setTextBold] = useState(false);
+  const [sliderPanelPos, setSliderPanelPos] = useState({ x: 18, y: 64 }),
+    [sliderPanelDrag, setSliderPanelDrag] = useState<{
+      offsetX: number;
+      offsetY: number;
+    } | null>(null);
   const [moveX, setMoveX] = useState(2),
     [moveY, setMoveY] = useState(1),
     [rotation, setRotation] = useState(90);
 
   const selected = objects.find((o) => o.id === selectedId) ?? null;
   const sliders = objects.filter((o): o is SliderObject => o.type === "slider");
+  const canvasSliders = sliders.filter((slider) => slider.showOnCanvas && !slider.hidden);
   const variables = Object.fromEntries(sliders.map((s) => [s.name, s.value]));
   const pushObjects = useCallback(
     (next: MathObject[]) => {
@@ -960,6 +983,7 @@ export default function CoordinateWorkspace() {
     const w = rect.width,
       h = rect.height;
     labelHitboxesRef.current = [];
+    textHitboxesRef.current = [];
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, w, h);
@@ -1385,6 +1409,41 @@ export default function CoordinateWorkspace() {
           });
         }
       });
+    objects
+      .filter((o): o is TextObject => o.type === "text" && !o.hidden)
+      .forEach((o) => {
+        const p = worldToScreen(o.x, o.y, w, h),
+          lines = o.text.split("\n"),
+          rtl = /[\u0590-\u05ff\u0600-\u06ff]/.test(o.text),
+          lineHeight = Math.max(18, o.fontSize * 1.25);
+        ctx.save();
+        ctx.direction = rtl ? "rtl" : "ltr";
+        ctx.textAlign = rtl ? "right" : "left";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = o.color;
+        ctx.font = `${o.bold ? 700 : 400} ${o.fontSize}px Arial, sans-serif`;
+        const widths = lines.map((line) => ctx.measureText(line || " ").width),
+          width = Math.max(12, ...widths),
+          height = Math.max(lineHeight, lines.length * lineHeight),
+          left = rtl ? p.x - width : p.x;
+        lines.forEach((line, index) =>
+          ctx.fillText(line || " ", p.x, p.y + index * lineHeight),
+        );
+        if (o.id === selectedId) {
+          ctx.strokeStyle = "#0f766e";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 4]);
+          ctx.strokeRect(left - 6, p.y - 5, width + 12, height + 10);
+        }
+        textHitboxesRef.current.push({
+          objectId: o.id,
+          x: left - 8,
+          y: p.y - 7,
+          width: width + 16,
+          height: height + 14,
+        });
+        ctx.restore();
+      });
     if (intersectionCandidates.length) {
       intersectionCandidates.forEach((candidate, index) => {
         const p = worldToScreen(candidate.x, candidate.y, w, h);
@@ -1552,6 +1611,17 @@ export default function CoordinateWorkspace() {
     return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
   };
   const nearestObject = (sx: number, sy: number, w: number, h: number) => {
+    const textBox = [...textHitboxesRef.current]
+      .reverse()
+      .find(
+        (box) =>
+          sx >= box.x &&
+          sx <= box.x + box.width &&
+          sy >= box.y &&
+          sy <= box.y + box.height,
+      );
+    if (textBox)
+      return objects.find((object) => object.id === textBox.objectId);
     const point = nearestPoint(sx, sy, w, h);
     if (point) return point;
     const world = screenToWorld(sx, sy, w, h);
@@ -2143,7 +2213,10 @@ export default function CoordinateWorkspace() {
     e.currentTarget.setPointerCapture(e.pointerId);
     const p = pointerPos(e),
       magnet = magneticCandidate(p.x, p.y, p.w, p.h),
-      world = magnet?.point ?? snapWorld(screenToWorld(p.x, p.y, p.w, p.h)),
+      world =
+        tool === "text"
+          ? screenToWorld(p.x, p.y, p.w, p.h)
+          : magnet?.point ?? snapWorld(screenToWorld(p.x, p.y, p.w, p.h)),
       hitPoint = nearestPoint(p.x, p.y, p.w, p.h),
       hit = nearestObject(p.x, p.y, p.w, p.h),
       cp: ConstructionPoint = hitPoint
@@ -2236,6 +2309,15 @@ export default function CoordinateWorkspace() {
             sy: e.clientY,
             origin: viewport,
           });
+        } else if (hit.type === "text") {
+          dragStartObjectsRef.current = objects;
+          setDragging({
+            kind: "text",
+            id: hit.id,
+            sx: e.clientX,
+            sy: e.clientY,
+            origin: viewport,
+          });
         }
       } else {
         setSelectedId(null);
@@ -2247,6 +2329,30 @@ export default function CoordinateWorkspace() {
           origin: viewport,
         });
       }
+      return;
+    }
+    if (tool === "text") {
+      const value = textDraft.trim();
+      if (!value) {
+        setFeedback("כתבו טקסט לפני שממקמים אותו במישור");
+        return;
+      }
+      const textObject: TextObject = {
+        id: uid(),
+        type: "text",
+        name: `טקסט ${objects.filter((o) => o.type === "text").length + 1}`,
+        text: value,
+        x: world.x,
+        y: world.y,
+        fontSize: textSize,
+        bold: textBold,
+        color: COLORS[5],
+      };
+      pushObjects([...objects, textObject]);
+      setSelectedId(textObject.id);
+      setOpenPropertiesId(textObject.id);
+      setTool("select");
+      setFeedback("הטקסט נוסף. אפשר לגרור אותו לכל מקום במישור");
       return;
     }
     if (tool === "point") {
@@ -2752,7 +2858,10 @@ export default function CoordinateWorkspace() {
         p.h,
         dragging?.kind === "point" ? 27 : 22,
       ),
-      world = magnet?.point ?? snapWorld(screenToWorld(p.x, p.y, p.w, p.h));
+      world =
+        dragging?.kind === "text"
+          ? screenToWorld(p.x, p.y, p.w, p.h)
+          : magnet?.point ?? snapWorld(screenToWorld(p.x, p.y, p.w, p.h));
     setMagneticTarget(magnet?.name ?? null);
     setPointer(world);
     if (!dragging) return;
@@ -2808,13 +2917,17 @@ export default function CoordinateWorkspace() {
                   dependency: { ...o.dependency, x: world.x },
                 }
               : { ...o, x: world.x, y: world.y }
-            : o,
+            : o.id === dragging.id && o.type === "text"
+              ? { ...o, x: world.x, y: world.y }
+              : o,
         ),
       );
   };
   const onUp = () => {
     if (
-      (dragging?.kind === "point" || dragging?.kind === "label") &&
+      (dragging?.kind === "point" ||
+        dragging?.kind === "label" ||
+        dragging?.kind === "text") &&
       dragStartObjectsRef.current
     ) {
       setHistory((h) => [...h.slice(-49), dragStartObjectsRef.current!]);
@@ -2955,6 +3068,7 @@ export default function CoordinateWorkspace() {
       max: sliderMax,
       step: sliderStep,
       color: COLORS[8],
+      showOnCanvas: false,
     };
     pushObjects([...objects, o]);
     setSelectedId(o.id);
@@ -3136,7 +3250,8 @@ export default function CoordinateWorkspace() {
       !selected ||
       selected.type === "function" ||
       selected.type === "angle" ||
-      selected.type === "slider"
+      selected.type === "slider" ||
+      selected.type === "text"
     ) {
       setFeedback("בחרו נקודה, קטע, ישר, מצולע או מעגל לטרנספורמציה");
       return;
@@ -3213,13 +3328,86 @@ export default function CoordinateWorkspace() {
     setOpenPropertiesId(copy.id);
     setFeedback(`${label} נוצר בהצלחה`);
   };
+  const drawSliderPanelForExport = (ctx: CanvasRenderingContext2D) => {
+    if (!canvasSliders.length) return;
+    const width = 270,
+      rowHeight = 76,
+      height = 46 + canvasSliders.length * rowHeight,
+      x = sliderPanelPos.x,
+      y = sliderPanelPos.y;
+    ctx.save();
+    ctx.shadowColor = "rgba(18, 49, 58, .2)";
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 5;
+    ctx.fillStyle = "rgba(255,255,255,.97)";
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, 13);
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.strokeStyle = "#bfd7d9";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "#edf7f6";
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, 42, [13, 13, 0, 0]);
+    ctx.fill();
+    ctx.fillStyle = "#174f4b";
+    ctx.font = "700 14px Arial, sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText("מחוונים", x + width - 14, y + 21);
+    canvasSliders.forEach((slider, index) => {
+      const top = y + 46 + index * rowHeight,
+        trackX = x + 18,
+        trackWidth = width - 36,
+        ratio =
+          slider.max === slider.min
+            ? 0
+            : (slider.value - slider.min) / (slider.max - slider.min),
+        knobX = trackX + Math.max(0, Math.min(1, ratio)) * trackWidth;
+      ctx.fillStyle = "#243e47";
+      ctx.font = "700 13px Arial, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(
+        `${slider.name} = ${round(slider.value, 4)}`,
+        x + width - 16,
+        top + 14,
+      );
+      ctx.strokeStyle = "#c7d6d9";
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(trackX, top + 38);
+      ctx.lineTo(trackX + trackWidth, top + 38);
+      ctx.stroke();
+      ctx.strokeStyle = slider.color;
+      ctx.beginPath();
+      ctx.moveTo(trackX, top + 38);
+      ctx.lineTo(knobX, top + 38);
+      ctx.stroke();
+      ctx.fillStyle = slider.color;
+      ctx.beginPath();
+      ctx.arc(knobX, top + 38, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#647980";
+      ctx.font = "11px Arial, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(String(slider.min), trackX, top + 59);
+      ctx.textAlign = "right";
+      ctx.fillText(String(slider.max), trackX + trackWidth, top + 59);
+    });
+    ctx.restore();
+  };
   const exportPng = () => {
     draw();
     requestAnimationFrame(() => {
+      const ctx = canvasRef.current!.getContext("2d");
+      if (ctx) drawSliderPanelForExport(ctx);
       const link = document.createElement("a");
       link.download = "המרחב-המתמטי.png";
       link.href = canvasRef.current!.toDataURL("image/png");
       link.click();
+      draw();
     });
   };
   const undo = () => {
@@ -3297,10 +3485,12 @@ export default function CoordinateWorkspace() {
             : "בחרו זווית, שלוש נקודות, או שוק ואז קודקוד"
         : objectPending || linearPending
           ? "השלימו את הבחירה השנייה"
-          : pending
-            ? "בחרו נקודה שנייה"
+            : pending
+              ? "בחרו נקודה שנייה"
+            : tool === "text"
+              ? "לחצו במקום שבו תרצו למקם את הטקסט"
             : tool === "select"
-              ? "בחרו אובייקט או גררו נקודה"
+              ? "בחרו אובייקט או גררו נקודה וטקסט"
               : "פעלו במישור לפי הכלי שנבחר";
 
   return (
@@ -3452,6 +3642,58 @@ export default function CoordinateWorkspace() {
               <span />
               הצגת מספרים
             </label>
+          </ToolSection>
+          <ToolSection
+            title="טקסט והערות"
+            open={sections.text ?? false}
+            onToggle={() => toggleSection("text")}
+          >
+            <div className="text-tool">
+              <label>
+                הטקסט שיופיע במישור
+                <textarea
+                  rows={3}
+                  value={textDraft}
+                  placeholder="כתבו כותרת, הסבר או תשובה..."
+                  onChange={(e) => setTextDraft(e.target.value)}
+                />
+              </label>
+              <div className="text-tool-options">
+                <label>
+                  גודל
+                  <input
+                    type="number"
+                    min={12}
+                    max={72}
+                    value={textSize}
+                    onChange={(e) =>
+                      setTextSize(Math.max(12, Math.min(72, Number(e.target.value) || 12)))
+                    }
+                  />
+                </label>
+                <label className="text-bold-option">
+                  <input
+                    type="checkbox"
+                    checked={textBold}
+                    onChange={(e) => setTextBold(e.target.checked)}
+                  />
+                  <span>טקסט מודגש</span>
+                </label>
+              </div>
+              <button
+                className={tool === "text" ? "active" : ""}
+                onClick={() => {
+                  if (!textDraft.trim()) {
+                    setFeedback("כתבו טקסט לפני שממקמים אותו במישור");
+                    return;
+                  }
+                  chooseTool("text");
+                }}
+              >
+                T&nbsp;&nbsp;בחירה ואז מיקום במישור
+              </button>
+              <small>לאחר הלחיצה, לחצו במקום הרצוי על מערכת הצירים.</small>
+            </div>
           </ToolSection>
           {shapeTools.length > 0 && (
             <>
@@ -3609,6 +3851,22 @@ export default function CoordinateWorkspace() {
                         ⋯
                       </button>
                     </div>
+                    <label className="canvas-slider-toggle">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(s.showOnCanvas)}
+                        onChange={(e) =>
+                          setObjects((current) =>
+                            current.map((object) =>
+                              object.id === s.id && object.type === "slider"
+                                ? { ...object, showOnCanvas: e.target.checked }
+                                : object,
+                            ),
+                          )
+                        }
+                      />
+                      <span>הצגה על מערכת הצירים</span>
+                    </label>
                     <input
                       type="range"
                       min={s.min}
@@ -3749,6 +4007,84 @@ export default function CoordinateWorkspace() {
               }));
             }}
           />
+          {canvasSliders.length > 0 && (
+            <section
+              className="canvas-slider-panel"
+              style={{ left: sliderPanelPos.x, top: sliderPanelPos.y }}
+              aria-label="מחוונים על מערכת הצירים"
+            >
+              <header
+                onPointerDown={(e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  const panel = e.currentTarget.parentElement!.getBoundingClientRect();
+                  setSliderPanelDrag({
+                    offsetX: e.clientX - panel.left,
+                    offsetY: e.clientY - panel.top,
+                  });
+                }}
+                onPointerMove={(e) => {
+                  if (!sliderPanelDrag || !wrapRef.current) return;
+                  const wrap = wrapRef.current.getBoundingClientRect(),
+                    panelWidth = 270,
+                    panelHeight = Math.min(
+                      wrap.height - 12,
+                      46 + canvasSliders.length * 76,
+                    );
+                  setSliderPanelPos({
+                    x: Math.max(
+                      6,
+                      Math.min(
+                        wrap.width - panelWidth - 6,
+                        e.clientX - wrap.left - sliderPanelDrag.offsetX,
+                      ),
+                    ),
+                    y: Math.max(
+                      6,
+                      Math.min(
+                        wrap.height - panelHeight - 6,
+                        e.clientY - wrap.top - sliderPanelDrag.offsetY,
+                      ),
+                    ),
+                  });
+                }}
+                onPointerUp={() => setSliderPanelDrag(null)}
+                onPointerCancel={() => setSliderPanelDrag(null)}
+              >
+                <span>⋮⋮</span>
+                <strong>מחוונים</strong>
+                <small>גררו כדי להזיז</small>
+              </header>
+              <div className="canvas-slider-list">
+                {canvasSliders.map((slider) => (
+                  <label key={slider.id}>
+                    <b>
+                      <span>{slider.name}</span> = {round(slider.value, 4)}
+                    </b>
+                    <input
+                      type="range"
+                      min={slider.min}
+                      max={slider.max}
+                      step={slider.step}
+                      value={slider.value}
+                      onChange={(e) =>
+                        setObjects((current) =>
+                          current.map((object) =>
+                            object.id === slider.id && object.type === "slider"
+                              ? { ...object, value: Number(e.target.value) }
+                              : object,
+                          ),
+                        )
+                      }
+                    />
+                    <small>
+                      <span>{slider.min}</span>
+                      <span>{slider.max}</span>
+                    </small>
+                  </label>
+                ))}
+              </div>
+            </section>
+          )}
           <div className="canvas-hint">{hint}</div>
           <div className="zoom">
             <button
@@ -4305,41 +4641,96 @@ export default function CoordinateWorkspace() {
                         </>
                       )}
                       {selected.type === "slider" && (
-                        <div className="slider-properties">
-                          <label>
-                            מינימום
+                        <>
+                          <label className="toggle">
                             <input
-                              type="number"
-                              value={selected.min}
+                              type="checkbox"
+                              checked={Boolean(selected.showOnCanvas)}
                               onChange={(e) =>
-                                updateSelected({ min: Number(e.target.value) })
+                                updateSelected({ showOnCanvas: e.target.checked })
                               }
                             />
+                            <span />
+                            הצגה בתיבה על מערכת הצירים
                           </label>
+                          <div className="slider-properties">
+                            <label>
+                              מינימום
+                              <input
+                                type="number"
+                                value={selected.min}
+                                onChange={(e) =>
+                                  updateSelected({ min: Number(e.target.value) })
+                                }
+                              />
+                            </label>
+                            <label>
+                              מקסימום
+                              <input
+                                type="number"
+                                value={selected.max}
+                                onChange={(e) =>
+                                  updateSelected({ max: Number(e.target.value) })
+                                }
+                              />
+                            </label>
+                            <label>
+                              צעד
+                              <input
+                                type="number"
+                                value={selected.step}
+                                onChange={(e) =>
+                                  updateSelected({ step: Number(e.target.value) })
+                                }
+                              />
+                            </label>
+                          </div>
+                        </>
+                      )}
+                      {selected.type === "text" && (
+                        <div className="text-properties">
                           <label>
-                            מקסימום
-                            <input
-                              type="number"
-                              value={selected.max}
-                              onChange={(e) =>
-                                updateSelected({ max: Number(e.target.value) })
-                              }
+                            תוכן הטקסט
+                            <textarea
+                              rows={4}
+                              value={selected.text}
+                              onChange={(e) => updateSelected({ text: e.target.value })}
                             />
                           </label>
-                          <label>
-                            צעד
-                            <input
-                              type="number"
-                              value={selected.step}
-                              onChange={(e) =>
-                                updateSelected({ step: Number(e.target.value) })
-                              }
-                            />
-                          </label>
+                          <div>
+                            <label>
+                              גודל
+                              <input
+                                type="number"
+                                min={12}
+                                max={72}
+                                value={selected.fontSize}
+                                onChange={(e) =>
+                                  updateSelected({
+                                    fontSize: Math.max(
+                                      12,
+                                      Math.min(72, Number(e.target.value) || 12),
+                                    ),
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="text-bold-property">
+                              <input
+                                type="checkbox"
+                                checked={selected.bold}
+                                onChange={(e) =>
+                                  updateSelected({ bold: e.target.checked })
+                                }
+                              />
+                              מודגש
+                            </label>
+                          </div>
                         </div>
                       )}
                       {selected.type !== "point" &&
-                        selected.type !== "slider" && (
+                        selected.type !== "slider" &&
+                        selected.type !== "text" && (
                           <div className="line-appearance">
                             <label>
                               עובי

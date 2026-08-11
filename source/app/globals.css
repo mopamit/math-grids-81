@@ -1624,3 +1624,203 @@ select {
   background: #ddf1ef;
   border-color: #4b9e98;
 }
+
+/* Free text tool */
+.text-tool {
+  display: grid;
+  gap: 10px;
+}
+.text-tool > label,
+.text-properties > label,
+.text-properties > div > label {
+  display: grid;
+  gap: 5px;
+  color: #536970;
+  font-size: 11px;
+  font-weight: 700;
+}
+.text-tool textarea,
+.text-properties textarea {
+  width: 100%;
+  min-height: 74px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1px solid #cbdadc;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  font: 14px/1.45 Arial, sans-serif;
+  direction: rtl;
+}
+.text-tool textarea:focus,
+.text-properties textarea:focus,
+.text-tool input:focus,
+.text-properties input:focus {
+  border-color: #4d9f9a;
+  outline: 3px solid #bce4e033;
+}
+.text-tool-options,
+.text-properties > div {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  align-items: end;
+  gap: 10px;
+}
+.text-tool-options input[type="number"],
+.text-properties input[type="number"] {
+  width: 100%;
+  height: 38px;
+  padding: 0 8px;
+  border: 1px solid #cbdadc;
+  border-radius: 8px;
+  direction: ltr;
+  text-align: center;
+}
+.text-bold-option,
+.text-bold-property {
+  min-height: 38px;
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+  padding: 0 10px;
+  border: 1px solid #d7e3e5;
+  border-radius: 8px;
+  background: #f8fbfb;
+  cursor: pointer;
+}
+.text-bold-option input,
+.text-bold-property input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--teal);
+}
+.text-tool > button {
+  min-height: 42px;
+  border: 1px solid #78b7b3;
+  border-radius: 9px;
+  background: #eef8f7;
+  color: #076b65;
+  font-weight: 800;
+  cursor: pointer;
+}
+.text-tool > button:hover,
+.text-tool > button.active {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: #fff;
+}
+.text-tool > small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.text-properties {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+/* Slider visibility choice in the tools panel */
+.canvas-slider-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 9px;
+  color: #4c646c;
+  font-size: 11px;
+  cursor: pointer;
+}
+.canvas-slider-toggle input {
+  width: 16px !important;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--teal);
+}
+
+/* Movable slider panel above the coordinate plane */
+.canvas-slider-panel {
+  position: absolute;
+  z-index: 7;
+  width: 270px;
+  max-height: calc(100% - 12px);
+  overflow: auto;
+  border: 1px solid #bfd7d9;
+  border-radius: 13px;
+  background: #fffffff7;
+  box-shadow: 0 8px 26px #12313a2e;
+  direction: rtl;
+  backdrop-filter: blur(5px);
+}
+.canvas-slider-panel > header {
+  height: 42px;
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border-bottom: 1px solid #d8e7e8;
+  background: #edf7f6;
+  color: #174f4b;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.canvas-slider-panel > header:active {
+  cursor: grabbing;
+}
+.canvas-slider-panel > header > span {
+  color: #6b9794;
+  font-size: 18px;
+  letter-spacing: -5px;
+}
+.canvas-slider-panel > header strong {
+  font-size: 14px;
+}
+.canvas-slider-panel > header small {
+  color: #6b7e84;
+  font-size: 9px;
+  font-weight: 500;
+}
+.canvas-slider-list {
+  padding: 4px 14px 8px;
+}
+.canvas-slider-list > label {
+  display: grid;
+  gap: 5px;
+  padding: 9px 0 8px;
+  border-bottom: 1px solid #e5edef;
+}
+.canvas-slider-list > label:last-child {
+  border-bottom: 0;
+}
+.canvas-slider-list b {
+  color: #243e47;
+  font-size: 13px;
+  direction: ltr;
+  text-align: left;
+}
+.canvas-slider-list b span {
+  color: var(--teal);
+  font-size: 15px;
+}
+.canvas-slider-list input[type="range"] {
+  width: 100%;
+  accent-color: var(--teal);
+  cursor: pointer;
+  direction: ltr;
+}
+.canvas-slider-list label > small {
+  display: flex;
+  justify-content: space-between;
+  color: #74888e;
+  font-size: 9px;
+  direction: ltr;
+}
+@media (max-width: 700px) {
+  .canvas-slider-panel {
+    width: min(250px, calc(100% - 12px));
+  }
+  .canvas-slider-panel > header small {
+    display: none;
+  }
+}

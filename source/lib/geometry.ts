@@ -141,6 +141,21 @@ export type SliderObject = {
   max: number;
   step: number;
   color: string;
+  showOnCanvas?: boolean;
+  hidden?: boolean;
+  labelOffsets?: LabelOffsets;
+};
+
+export type TextObject = {
+  id: string;
+  type: "text";
+  name: string;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  bold: boolean;
+  color: string;
   hidden?: boolean;
   labelOffsets?: LabelOffsets;
 };
@@ -152,7 +167,8 @@ export type MathObject =
   | AngleObject
   | PolygonObject
   | CircleObject
-  | SliderObject;
+  | SliderObject
+  | TextObject;
 
 export type Tool =
   | "select"
@@ -171,7 +187,8 @@ export type Tool =
   | "perpendicularBisector"
   | "median"
   | "angleBisector"
-  | "intersection";
+  | "intersection"
+  | "text";
 
 export type Viewport = { centerX: number; centerY: number; scale: number };
 
