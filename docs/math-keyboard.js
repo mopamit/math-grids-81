@@ -60,43 +60,50 @@
         { label: '1', title: 'אחת', insert: '1' },
         { label: '2', title: 'שתיים', insert: '2' },
         { label: '3', title: 'שלוש', insert: '3' },
-        { label: '0', title: 'אפס', insert: '0', wide: true },
+        { label: '0', title: 'אפס', insert: '0' },
         { label: '.', title: 'נקודה עשרונית', insert: '.' },
+        { label: '=', title: 'שווה', insert: '=' },
       ],
     },
     {
       id: 'operations',
-      title: 'פעולות חשבון',
+      title: 'פעולות',
       buttons: [
-        { label: 'x', title: 'המשתנה x', insert: 'x' },
-        { label: 'y', title: 'המשתנה y', insert: 'y' },
         { label: '+', title: 'חיבור', insert: '+' },
         { label: '−', title: 'חיסור', insert: '-' },
         { label: '×', title: 'כפל', insert: '\\times' },
         { label: '÷', title: 'חילוק', insert: '\\div' },
-        { label: '=', title: 'שווה', insert: '=' },
+      ],
+    },
+    {
+      id: 'variables',
+      title: 'משתנים',
+      buttons: [
+        { label: 'x', title: 'המשתנה x', insert: 'x' },
+        { label: 'y', title: 'המשתנה y', insert: 'y' },
+      ],
+    },
+    {
+      id: 'quick',
+      title: 'פעולות נפוצות',
+      buttons: [
+        { label: 'x²', title: 'בריבוע', insert: '^{2}' },
+        { label: '√x', title: 'שורש ריבועי', insert: '\\sqrt{\\placeholder{}}' },
+        { label: '|x|', title: 'ערך מוחלט', insert: '\\left|\\placeholder{}\\right|' },
+        { label: 'π', title: 'פאי', insert: '\\pi' },
+        { label: 'xₙ', title: 'כתב תחתי', insert: '_{\\placeholder{}}' },
+        { label: '( )', title: 'סוגריים', insert: '(\\placeholder{})' },
         { label: '±', title: 'פלוס־מינוס', insert: '\\pm' },
       ],
     },
     {
-      id: 'powers',
-      title: 'חזקות ושורשים',
-      buttons: [
-        { label: 'x²', title: 'בריבוע', insert: '^{2}' },
-        { label: 'xⁿ', title: 'חזקה', insert: '^{\\placeholder{}}' },
-        { label: '√x', title: 'שורש ריבועי', insert: '\\sqrt{\\placeholder{}}' },
-        { label: 'ⁿ√x', title: 'שורש מסדר n', insert: '\\sqrt[\\placeholder{}]{\\placeholder{}}' },
-      ],
-    },
-    {
       id: 'structures',
-      title: 'מבנים מתמטיים',
+      title: 'הכנסת מבנים',
       buttons: [
         { label: 'a⁄b', title: 'שבר', insert: '\\frac{\\placeholder{}}{\\placeholder{}}' },
-        { label: '( )', title: 'סוגריים', insert: '(\\placeholder{})' },
-        { label: '|x|', title: 'ערך מוחלט', insert: '\\left|\\placeholder{}\\right|' },
-        { label: 'xₙ', title: 'אינדקס תחתון', insert: '_{\\placeholder{}}' },
-        { label: 'π', title: 'פאי', insert: '\\pi' },
+        { label: '1 a⁄b', title: 'שבר מעורב', insert: '\\placeholder{}\\frac{\\placeholder{}}{\\placeholder{}}' },
+        { label: 'xⁿ', title: 'חזקה כללית', insert: '^{\\placeholder{}}' },
+        { label: 'ⁿ√x', title: 'שורש מסדר כללי', insert: '\\sqrt[\\placeholder{}]{\\placeholder{}}' },
       ],
     },
     {
@@ -107,6 +114,64 @@
         { label: '▸', title: 'סמן ימינה', command: 'moveToNextChar' },
         { label: '⌫', title: 'מחיקה', command: 'deleteBackward' },
         { label: 'נקה', title: 'ניקוי השדה', clear: true, danger: true },
+      ],
+    },
+  ];
+
+  const ADVANCED_GROUPS = [
+    {
+      id: 'advanced-functions',
+      title: 'פונקציות ולוגריתמים',
+      buttons: [
+        { label: 'exp', title: 'פונקציה מעריכית', insert: '\\exp(\\placeholder{})' },
+        { label: 'ln', title: 'לוגריתם טבעי', insert: '\\ln(\\placeholder{})' },
+        { label: 'log', title: 'לוגריתם בבסיס 10', insert: '\\log(\\placeholder{})' },
+        { label: 'logₐ', title: 'לוגריתם בבסיס כללי', insert: '\\log_{\\placeholder{}}(\\placeholder{})' },
+      ],
+    },
+    {
+      id: 'advanced-trig',
+      title: 'פונקציות טריגונומטריות',
+      buttons: [
+        { label: 'sin', title: 'סינוס', insert: '\\sin(\\placeholder{})' },
+        { label: 'cos', title: 'קוסינוס', insert: '\\cos(\\placeholder{})' },
+        { label: 'tan', title: 'טנגנס', insert: '\\tan(\\placeholder{})' },
+        { label: 'csc', title: 'קוסקנס', insert: '\\csc(\\placeholder{})' },
+        { label: 'sec', title: 'סקנס', insert: '\\sec(\\placeholder{})' },
+        { label: 'cot', title: 'קוטנגנס', insert: '\\cot(\\placeholder{})' },
+      ],
+    },
+    {
+      id: 'advanced-inverse-trig',
+      title: 'טריגונומטריה הפוכה',
+      buttons: [
+        { label: 'sin⁻¹', title: 'ארק־סינוס', insert: '\\arcsin(\\placeholder{})' },
+        { label: 'cos⁻¹', title: 'ארק־קוסינוס', insert: '\\arccos(\\placeholder{})' },
+        { label: 'tan⁻¹', title: 'ארק־טנגנס', insert: '\\arctan(\\placeholder{})' },
+        { label: 'csc⁻¹', title: 'ארק־קוסקנס', insert: '\\operatorname{arccsc}(\\placeholder{})' },
+        { label: 'sec⁻¹', title: 'ארק־סקנס', insert: '\\operatorname{arcsec}(\\placeholder{})' },
+        { label: 'cot⁻¹', title: 'ארק־קוטנגנס', insert: '\\operatorname{arccot}(\\placeholder{})' },
+      ],
+    },
+    {
+      id: 'advanced-calculus',
+      title: 'חשבון דיפרנציאלי ואינטגרלי',
+      buttons: [
+        { label: 'd⁄dx', title: 'נגזרת', insert: '\\frac{d}{dx}(\\placeholder{})' },
+        { label: "f′", title: 'סימון נגזרת', insert: "f'(\\placeholder{})" },
+        { label: '∫', title: 'אינטגרל', insert: '\\int_{\\placeholder{}}^{\\placeholder{}} \\placeholder{}\\,dx' },
+        { label: 'Σ', title: 'סכום', insert: '\\sum_{\\placeholder{}}^{\\placeholder{}} \\placeholder{}' },
+        { label: 'Π', title: 'מכפלה', insert: '\\prod_{\\placeholder{}}^{\\placeholder{}} \\placeholder{}' },
+      ],
+    },
+    {
+      id: 'advanced-matrices',
+      title: 'מטריצות',
+      buttons: [
+        { label: '2×2', title: 'מטריצה 2 על 2', insert: '\\begin{bmatrix}\\placeholder{}&\\placeholder{}\\\\\\placeholder{}&\\placeholder{}\\end{bmatrix}' },
+        { label: '3×3', title: 'מטריצה 3 על 3', insert: '\\begin{bmatrix}\\placeholder{}&\\placeholder{}&\\placeholder{}\\\\\\placeholder{}&\\placeholder{}&\\placeholder{}\\\\\\placeholder{}&\\placeholder{}&\\placeholder{}\\end{bmatrix}' },
+        { label: '|2×2|', title: 'דטרמיננטה 2 על 2', insert: '\\begin{vmatrix}\\placeholder{}&\\placeholder{}\\\\\\placeholder{}&\\placeholder{}\\end{vmatrix}' },
+        { label: 'וקטור', title: 'וקטור עמודה', insert: '\\begin{pmatrix}\\placeholder{}\\\\\\placeholder{}\\end{pmatrix}' },
       ],
     },
   ];
@@ -160,10 +225,11 @@
     .mkf-toolbar {
       direction: ltr;
       display: grid;
-      grid-template-columns: minmax(190px, 1.15fr) minmax(130px, .72fr) minmax(190px, 1fr) minmax(190px, 1fr);
+      grid-template-columns: minmax(210px, 1.18fr) minmax(66px, .36fr) minmax(94px, .52fr) minmax(185px, 1fr) minmax(185px, 1fr);
       grid-template-areas:
-        "numbers operations powers structures"
-        "numbers operations editing editing";
+        "numbers operations variables quick structures"
+        "advanced advanced advanced advanced advanced"
+        "editing editing editing editing editing";
       gap: 10px;
       padding: 10px;
       border: 1px solid var(--mkf-border);
@@ -180,7 +246,8 @@
     }
     .mkf-group[data-group="numbers"] { grid-area: numbers; }
     .mkf-group[data-group="operations"] { grid-area: operations; }
-    .mkf-group[data-group="powers"] { grid-area: powers; }
+    .mkf-group[data-group="variables"] { grid-area: variables; }
+    .mkf-group[data-group="quick"] { grid-area: quick; }
     .mkf-group[data-group="structures"] { grid-area: structures; }
     .mkf-group[data-group="editing"] { grid-area: editing; }
     .mkf-group-title {
@@ -198,6 +265,12 @@
     }
     .mkf-group[data-group="numbers"] .mkf-group-buttons {
       grid-template-columns: repeat(3, minmax(48px, 1fr));
+    }
+    .mkf-group[data-group="operations"] .mkf-group-buttons {
+      grid-template-columns: 1fr;
+    }
+    .mkf-group[data-group="variables"] .mkf-group-buttons {
+      grid-template-columns: 1fr;
     }
     .mkf-group[data-group="editing"] .mkf-group-buttons {
       grid-template-columns: repeat(4, minmax(58px, 1fr));
@@ -247,22 +320,64 @@
       background: #f2edff;
       color: #52348c;
     }
-    .mkf-btn--wide { grid-column: span 2; }
     .mkf-btn--danger { color: #a12626; background: #fff0f0; }
+    .mkf-advanced {
+      grid-area: advanced;
+      direction: rtl;
+      min-width: 0;
+    }
+    .mkf-advanced-toggle {
+      width: 100%;
+      height: 42px;
+      border: 1px solid #b9a9e2;
+      border-radius: 10px;
+      background: #ebe4ff;
+      color: #4f3388;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .mkf-advanced-toggle:hover { background: #e2d8ff; }
+    .mkf-advanced-toggle:focus-visible {
+      outline: 2px solid var(--mkf-border-focus);
+      outline-offset: 2px;
+    }
+    .mkf-advanced-panel {
+      display: none;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+      padding: 9px;
+      border: 1px solid #d7d0e8;
+      border-radius: 11px;
+      background: #faf8ff;
+    }
+    .mkf-advanced-panel.mkf-open { display: grid; }
+    .mkf-advanced-panel .mkf-group { padding: 8px; }
+    .mkf-advanced-panel .mkf-group-buttons {
+      grid-template-columns: repeat(3, minmax(48px, 1fr));
+    }
     @media (max-width: 820px) {
       .mkf-toolbar {
-        grid-template-columns: 1.2fr .8fr;
+        grid-template-columns: 1.25fr .42fr .58fr 1fr;
         grid-template-areas:
-          "numbers operations"
-          "powers structures"
-          "editing editing";
+          "numbers operations variables quick"
+          "structures structures structures structures"
+          "advanced advanced advanced advanced"
+          "editing editing editing editing";
       }
+      .mkf-advanced-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 470px) {
       .mkf-toolbar {
-        grid-template-columns: 1fr;
-        grid-template-areas: "numbers" "operations" "powers" "structures" "editing";
+        grid-template-columns: 1fr .38fr .52fr;
+        grid-template-areas:
+          "numbers operations variables"
+          "quick quick quick"
+          "structures structures structures"
+          "advanced advanced advanced"
+          "editing editing editing";
       }
+      .mkf-advanced-panel { grid-template-columns: 1fr; }
       .mkf-group[data-group="editing"] .mkf-group-buttons {
         grid-template-columns: repeat(4, minmax(48px, 1fr));
       }
@@ -307,7 +422,7 @@
       toolbar.setAttribute('role', 'toolbar');
       toolbar.setAttribute('aria-label', 'סרגל כתיב מתמטי');
 
-      TOOLBAR_GROUPS.forEach((groupDef) => {
+      const buildGroup = (groupDef, advanced = false) => {
         const group = document.createElement('section');
         group.className = 'mkf-group';
         group.dataset.group = groupDef.id;
@@ -333,7 +448,6 @@
           btn.className =
             'mkf-btn' +
             typeClass +
-            (def.wide ? ' mkf-btn--wide' : '') +
             (def.danger ? ' mkf-btn--danger' : '');
           btn.textContent = def.label;
           btn.title = def.title;
@@ -346,8 +460,34 @@
         });
         group.appendChild(heading);
         group.appendChild(buttons);
-        toolbar.appendChild(group);
+        return group;
+      };
+
+      TOOLBAR_GROUPS.filter((groupDef) => groupDef.id !== 'editing').forEach((groupDef) => {
+        toolbar.appendChild(buildGroup(groupDef));
       });
+
+      const advanced = document.createElement('section');
+      advanced.className = 'mkf-advanced';
+      const advancedToggle = document.createElement('button');
+      advancedToggle.type = 'button';
+      advancedToggle.className = 'mkf-advanced-toggle';
+      advancedToggle.textContent = 'מתקדם  ▾';
+      advancedToggle.setAttribute('aria-expanded', 'false');
+      const advancedPanel = document.createElement('div');
+      advancedPanel.className = 'mkf-advanced-panel';
+      ADVANCED_GROUPS.forEach((groupDef) => advancedPanel.appendChild(buildGroup(groupDef, true)));
+      advancedToggle.addEventListener('click', () => {
+        const isOpen = advancedPanel.classList.toggle('mkf-open');
+        advancedToggle.textContent = isOpen ? 'מתקדם  ▴' : 'מתקדם  ▾';
+        advancedToggle.setAttribute('aria-expanded', String(isOpen));
+      });
+      advanced.appendChild(advancedToggle);
+      advanced.appendChild(advancedPanel);
+      toolbar.appendChild(advanced);
+
+      const editingGroup = TOOLBAR_GROUPS.find((groupDef) => groupDef.id === 'editing');
+      if (editingGroup) toolbar.appendChild(buildGroup(editingGroup));
 
       wrap.appendChild(fieldBox);
       wrap.appendChild(toolbar);
