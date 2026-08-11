@@ -327,28 +327,14 @@ const derivedObjectName = (
 
 const objectSummary = (object: MathObject, allObjects: MathObject[]) => {
   const name = derivedObjectName(object, allObjects);
-  const pointByName = (id?: string) =>
-    allObjects.find(
-      (candidate): candidate is PointObject =>
-        candidate.type === "point" && candidate.id === id,
-    );
   if (object.type === "point")
-    return `נקודה ${object.name} (${round(object.x)}, ${round(object.y)})`;
+    return `${object.name} (${round(object.x)}, ${round(object.y)})`;
   if (object.type === "segment") {
-    const a = pointByName(object.aId) ?? object.a,
-      b = pointByName(object.bId) ?? object.b,
-      kind = object.construction?.kind === "median" ? "תיכון" : "קטע";
-    return `${kind} ${name.replace(/^תיכון\s+/, "")} — d=${round(distance(a, b))}`;
+    const kind = object.construction?.kind === "median" ? "תיכון" : "קטע";
+    return `${kind} ${name.replace(/^תיכון\s+/, "")}`;
   }
   if (object.type === "line") return `ישר ${name}`;
-  if (object.type === "angle") {
-    const a = pointByName(object.aId),
-      v = pointByName(object.vertexId),
-      c = pointByName(object.cId);
-    return a && v && c
-      ? `זווית ${name} — ${round(angleDegrees(a, v, c), 1)}°`
-      : `זווית ${name}`;
-  }
+  if (object.type === "angle") return `זווית ${name.replace(/^∠/, "")}`;
   if (object.type === "polygon") {
     const count = object.pointIds.length,
       kind = count === 3 ? "משולש" : count === 4 ? "מרובע" : "מצולע";
@@ -3746,7 +3732,7 @@ export default function CoordinateWorkspace() {
                     }
                   >
                     <i
-                      className={o.hidden ? "empty" : "filled"}
+                      className={o.hidden ? "visibility-empty" : "filled"}
                       style={{ "--object-color": o.color } as React.CSSProperties}
                     />
                   </button>

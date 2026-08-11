@@ -157,7 +157,7 @@ if (!candidateHint.includes("2 נקודות חיתוך"))
   errors.push(`multiple intersection candidates missing: ${candidateHint}`);
 await clickWorld(-1.8, 0);
 texts = await cardTexts();
-const selectedIntersection = texts.find((text) => text.includes("נקודה D"));
+const selectedIntersection = texts.find((text) => text.startsWith("D ("));
 if (!selectedIntersection || !selectedIntersection.includes("(-1.8, 0)"))
   errors.push(`chosen polygon/function intersection failed: ${texts.join(" | ")}`);
 if ((await page.$$(".object-card")).length !== 6)

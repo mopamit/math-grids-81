@@ -89,7 +89,7 @@ const readPointCoordinates = async (name) => {
     const text = await main.evaluate((element) =>
       (element.textContent || "").replace(/\s+/g, " ").trim(),
     );
-    if (!text.includes(`נקודה ${name}`)) continue;
+    if (!text.startsWith(`${name} (`)) continue;
     await main.click();
     await pause();
     const toggle = await card.$(".object-toggle");
@@ -186,7 +186,18 @@ else {
     errors.push(`visibility control distorted: ${JSON.stringify(visibilitySize)}`);
   await visibility.click();
   await pause();
-  if (!(await visibility.$("i.empty"))) errors.push("hide object failed");
+  if (!(await visibility.$("i.visibility-empty"))) errors.push("hide object failed");
+  const hiddenSize = await visibility.evaluate((element) => {
+    const dot = element.querySelector("i");
+    const rect = dot?.getBoundingClientRect();
+    return rect ? { width: rect.width, height: rect.height } : null;
+  });
+  if (
+    !hiddenSize ||
+    Math.abs(hiddenSize.width - hiddenSize.height) > 0.5 ||
+    hiddenSize.height > 24
+  )
+    errors.push(`hidden visibility control distorted: ${JSON.stringify(hiddenSize)}`);
   await visibility.click();
   await pause();
   if (!(await visibility.$("i.filled"))) errors.push("show object failed");

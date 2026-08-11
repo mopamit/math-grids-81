@@ -1372,7 +1372,7 @@ select {
   background: var(--object-color);
   box-shadow: 0 0 0 2px #fff inset;
 }
-.object-card .object-visibility i.empty {
+.object-card .object-visibility i.visibility-empty {
   background: #fff;
   box-shadow: none;
 }
