@@ -72,6 +72,118 @@ type LabelHitbox = {
 };
 type IntersectionCandidate = Point & { sourceIds: [string, string] };
 
+type ExpressionToken = {
+  kind:
+    | "number"
+    | "variable"
+    | "constant"
+    | "function"
+    | "operator"
+    | "open"
+    | "close"
+    | "comma";
+  source: string;
+  javascript: string;
+};
+
+const EXPRESSION_FUNCTIONS: Record<string, string> = {
+  sqrt: "Math.sqrt",
+  abs: "Math.abs",
+  sin: "Math.sin",
+  cos: "Math.cos",
+  tan: "Math.tan",
+  ln: "Math.log",
+  log: "Math.log10",
+  exp: "Math.exp",
+};
+
+const compileExpression = (
+  source: string,
+  variables: Record<string, number>,
+) => {
+  const compact = source.toLowerCase().replace(/\s/g, "");
+  const tokens: ExpressionToken[] = [];
+  let cursor = 0;
+
+  while (cursor < compact.length) {
+    const rest = compact.slice(cursor);
+    const number = rest.match(/^(?:\d+(?:\.\d*)?|\.\d+)/)?.[0];
+    if (number) {
+      tokens.push({ kind: "number", source: number, javascript: number });
+      cursor += number.length;
+      continue;
+    }
+
+    const character = compact[cursor];
+    if ("+-*/^".includes(character)) {
+      tokens.push({
+        kind: "operator",
+        source: character,
+        javascript: character === "^" ? "**" : character,
+      });
+      cursor += 1;
+      continue;
+    }
+    if (character === "(" || character === ")" || character === ",") {
+      const kind =
+        character === "(" ? "open" : character === ")" ? "close" : "comma";
+      tokens.push({ kind, source: character, javascript: character });
+      cursor += 1;
+      continue;
+    }
+
+    if (/^[a-z]$/.test(character)) {
+      const functionName = Object.keys(EXPRESSION_FUNCTIONS).find(
+        (name) => rest.startsWith(name) && rest[name.length] === "(",
+      );
+      if (functionName) {
+        tokens.push({
+          kind: "function",
+          source: functionName,
+          javascript: EXPRESSION_FUNCTIONS[functionName],
+        });
+        cursor += functionName.length;
+        continue;
+      }
+      if (rest.startsWith("pi")) {
+        tokens.push({ kind: "constant", source: "pi", javascript: "Math.PI" });
+        cursor += 2;
+        continue;
+      }
+      if (character === "x" || Object.hasOwn(variables, character)) {
+        tokens.push({
+          kind: "variable",
+          source: character,
+          javascript: character === "x" ? "x" : `vars.${character}`,
+        });
+        cursor += 1;
+        continue;
+      }
+    }
+    throw new Error("symbol");
+  }
+
+  const endsValue = (token: ExpressionToken) =>
+    token.kind === "number" ||
+    token.kind === "variable" ||
+    token.kind === "constant" ||
+    token.kind === "close";
+  const startsValue = (token: ExpressionToken) =>
+    token.kind === "number" ||
+    token.kind === "variable" ||
+    token.kind === "constant" ||
+    token.kind === "function" ||
+    token.kind === "open";
+
+  return tokens
+    .map((token, index) => {
+      const previous = tokens[index - 1];
+      const multiply = previous && endsValue(previous) && startsValue(token);
+      return `${multiply ? "*" : ""}${token.javascript}`;
+    })
+    .join("");
+};
+
 const MODES: Record<
   Mode,
   { label: string; description: string; grade: string }
@@ -671,7 +783,7 @@ export default function CoordinateWorkspace() {
         .toLowerCase()
         .replace(/−/g, "-")
         .replace(/÷/g, "/")
-        .replace(/[·×]/g, "*")
+        .replace(/[·×∗]/g, "*")
         .replace(/\s/g, "")
         .split("=");
       if (sides.length !== 2) throw new Error("equation");
@@ -679,46 +791,10 @@ export default function CoordinateWorkspace() {
         functionMatch = left.match(/^([a-z][a-z0-9_]*)\(x\)$/),
         declaredName = functionMatch?.[1];
       if (left !== "y" && !declaredName) throw new Error("equation");
-      let expression = sides[1];
-      const allowedFunctions = new Set([
-          "sqrt",
-          "abs",
-          "sin",
-          "cos",
-          "tan",
-          "ln",
-          "log",
-          "exp",
-          "pi",
-        ]),
-        words = expression.match(/[a-z]+/g) ?? [];
-      for (const word of words) {
-        if (
-          word !== "x" &&
-          !allowedFunctions.has(word) &&
-          !(word.length === 1 && Object.hasOwn(variables, word))
-        )
-          throw new Error("symbol");
-      }
-      if (!/^[0-9a-z+\-*/^().,]+$/.test(expression))
+      const source = sides[1];
+      if (!/^[0-9a-z+\-*/^().,]+$/.test(source))
         throw new Error("character");
-      expression = expression
-        .replace(/\^/g, "**")
-        .replace(/\bpi\b/g, "Math.PI")
-        .replace(/\bsqrt\b/g, "Math.sqrt")
-        .replace(/\babs\b/g, "Math.abs")
-        .replace(/\bsin\b/g, "Math.sin")
-        .replace(/\bcos\b/g, "Math.cos")
-        .replace(/\btan\b/g, "Math.tan")
-        .replace(/\bln\b/g, "Math.log")
-        .replace(/\blog\b/g, "Math.log10")
-        .replace(/\bexp\b/g, "Math.exp");
-      for (const name of Object.keys(variables))
-        expression = expression.replace(
-          new RegExp(`\\b${name}\\b`, "g"),
-          `vars.${name}`,
-        );
-      expression = expression.replace(/(\d|x|\))(?=(x|\())/g, "$1*");
+      const expression = compileExpression(source, variables);
       const evaluate = new Function(
         "x",
         "vars",
