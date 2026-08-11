@@ -52,6 +52,14 @@ type ConstructionPoint = Point & {
   name?: string;
   functionId?: string;
 };
+type LinearReference = {
+  sourceId?: string;
+  sourceAId?: string;
+  sourceBId?: string;
+  name: string;
+  a: Point;
+  b: Point;
+};
 type LabelHitbox = {
   objectId: string;
   key: string;
@@ -278,10 +286,16 @@ const derivedObjectName = (
       const source = allObjects.find(
         (candidate) => candidate.id === construction.sourceId,
       );
-      if (source) {
+      const sourceEdgeName = [
+        pointName(construction.sourceAId),
+        pointName(construction.sourceBId),
+      ]
+        .filter(Boolean)
+        .join("");
+      if (source || sourceEdgeName) {
         const relation =
           construction.kind === "parallel" ? "מקביל" : "מאונך";
-        return `${relation} ל־${derivedObjectName(source, allObjects)}`;
+        return `${relation} ל־${source ? derivedObjectName(source, allObjects) : sourceEdgeName}`;
       }
     }
     if (object.construction?.kind === "angleBisector") {
@@ -361,12 +375,22 @@ const ObjectNameDisplay = ({
     const construction = object.construction;
     const source = allObjects.find(
       (candidate) => candidate.id === construction.sourceId,
-    );
+      ),
+      sourceEdgeName = [construction.sourceAId, construction.sourceBId]
+        .map((id) =>
+          allObjects.find(
+            (candidate) => candidate.type === "point" && candidate.id === id,
+          )?.name,
+        )
+        .filter(Boolean)
+        .join("");
     return (
       <>
         {construction.kind === "parallel" ? "מקביל" : "מאונך"} ל־
         <bdi dir="ltr">
-          {source ? derivedObjectName(source, allObjects) : object.name}
+          {source
+            ? derivedObjectName(source, allObjects)
+            : sourceEdgeName || object.name}
         </bdi>
       </>
     );
@@ -534,6 +558,7 @@ export default function CoordinateWorkspace() {
   const [anglePending, setAnglePending] = useState<string[]>([]),
     [polygonPending, setPolygonPending] = useState<string[]>([]),
     [objectPending, setObjectPending] = useState<string | null>(null),
+    [linearPending, setLinearPending] = useState<LinearReference | null>(null),
     [pointer, setPointer] = useState<Point | null>(null),
     [intersectionCandidates, setIntersectionCandidates] = useState<IntersectionCandidate[]>([]);
   const [dragging, setDragging] = useState<{
@@ -584,6 +609,7 @@ export default function CoordinateWorkspace() {
     setAnglePending([]);
     setPolygonPending([]);
     setObjectPending(null);
+    setLinearPending(null);
     setIntersectionCandidates([]);
     setRadiusDialogOpen(false);
     setFeedback(null);
@@ -751,9 +777,13 @@ export default function CoordinateWorkspace() {
             (x): x is SegmentObject =>
               (x.type === "segment" || x.type === "line") && x.id === sourceId,
           ),
+          sourceA = pointById(construction.sourceAId),
+          sourceB = pointById(construction.sourceBId),
           through = pointById(construction.throughId);
-        if (source && through) {
-          const sourceEnds = segmentPoints(source),
+        if ((source || (sourceA && sourceB)) && through) {
+          const sourceEnds = source
+              ? segmentPoints(source)
+              : { a: sourceA!, b: sourceB! },
             dx = sourceEnds.b.x - sourceEnds.a.x,
             dy = sourceEnds.b.y - sourceEnds.a.y,
             vector =
@@ -1589,6 +1619,43 @@ export default function CoordinateWorkspace() {
     }
     return best;
   };
+  const linearReferenceAt = (
+    hit: MathObject | undefined,
+    world: Point,
+  ): LinearReference | null => {
+    if (!hit) return null;
+    if (hit.type === "segment" || hit.type === "line") {
+      const ends = segmentPoints(hit);
+      return {
+        sourceId: hit.id,
+        name: derivedObjectName(hit, objects),
+        a: ends.a,
+        b: ends.b,
+      };
+    }
+    if (hit.type !== "polygon") return null;
+    const points = polygonPoints(hit);
+    if (points.length < 2) return null;
+    let bestIndex = 0,
+      bestDistance = Infinity;
+    points.forEach((point, index) => {
+      const next = points[(index + 1) % points.length],
+        candidateDistance = distanceToSegment(world, point, next);
+      if (candidateDistance < bestDistance) {
+        bestDistance = candidateDistance;
+        bestIndex = index;
+      }
+    });
+    const a = points[bestIndex],
+      b = points[(bestIndex + 1) % points.length];
+    return {
+      sourceAId: a.id,
+      sourceBId: b.id,
+      name: `${a.name}${b.name}`,
+      a,
+      b,
+    };
+  };
   const magneticCandidate = (
     sx: number,
     sy: number,
@@ -2407,12 +2474,16 @@ export default function CoordinateWorkspace() {
       return;
     }
     if (tool === "midpoint" || tool === "perpendicularBisector") {
-      if (!hit || (hit.type !== "segment" && hit.type !== "line")) {
-        setFeedback("בחרו קטע או ישר");
+      const reference = linearReferenceAt(hit, world);
+      if (!reference) {
+        setFeedback("בחרו קטע, ישר או צלע של מצולע");
         return;
       }
-      const ep = segmentPoints(hit);
-      if (!hit.aId || !hit.bId) {
+      const sourceAId = reference.sourceAId ??
+          (hit && (hit.type === "segment" || hit.type === "line") ? hit.aId : undefined),
+        sourceBId = reference.sourceBId ??
+          (hit && (hit.type === "segment" || hit.type === "line") ? hit.bId : undefined);
+      if (!sourceAId || !sourceBId) {
         setFeedback("הבנייה דורשת אובייקט המחובר לשתי נקודות");
         return;
       }
@@ -2420,8 +2491,8 @@ export default function CoordinateWorkspace() {
         id: uid(),
         type: "point",
         name: nextPointName(objects),
-        ...midpoint(ep.a, ep.b),
-        dependency: { kind: "midpoint", aId: hit.aId, bId: hit.bId },
+        ...midpoint(reference.a, reference.b),
+        dependency: { kind: "midpoint", aId: sourceAId, bId: sourceBId },
         color: COLORS[0],
         showName: true,
         showCoords: true,
@@ -2432,9 +2503,12 @@ export default function CoordinateWorkspace() {
         const l: SegmentObject = {
           id: uid(),
           type: "line",
-          name: `אנך אמצעי ל־${hit.name}`,
+          name: `אנך אמצעי ל־${reference.name}`,
           a: m,
-          b: { x: m.x - (ep.b.y - ep.a.y), y: m.y + (ep.b.x - ep.a.x) },
+          b: {
+            x: m.x - (reference.b.y - reference.a.y),
+            y: m.y + (reference.b.x - reference.a.x),
+          },
           aId: m.id,
           color: COLORS[6],
           showLength: false,
@@ -2444,7 +2518,9 @@ export default function CoordinateWorkspace() {
           strokeStyle: "dashed",
           construction: {
             kind: "perpendicular",
-            sourceId: hit.id,
+            sourceId: reference.sourceId,
+            sourceAId: reference.sourceAId,
+            sourceBId: reference.sourceBId,
             throughId: m.id,
           },
         };
@@ -2460,20 +2536,16 @@ export default function CoordinateWorkspace() {
       return;
     }
     if (tool === "parallel" || tool === "perpendicular") {
-      if (!objectPending) {
-        if (!hit || (hit.type !== "segment" && hit.type !== "line")) {
-          setFeedback("תחילה בחרו ישר או קטע");
+      if (!linearPending) {
+        const reference = linearReferenceAt(hit, world);
+        if (!reference) {
+          setFeedback("תחילה בחרו ישר, קטע או צלע של מצולע");
           return;
         }
-        setObjectPending(hit.id);
+        setLinearPending(reference);
         setFeedback("כעת בחרו נקודה שהישר יעבור דרכה");
         return;
       }
-      const source = objects.find(
-        (o): o is SegmentObject =>
-          (o.type === "segment" || o.type === "line") && o.id === objectPending,
-      );
-      if (!source) return;
       const throughResult = hitPoint
           ? { id: hitPoint.id, next: objects, point: hitPoint }
           : (() => {
@@ -2483,19 +2555,18 @@ export default function CoordinateWorkspace() {
                     candidate.type === "point" && candidate.id === created.id,
                 )!;
               return { id: created.id, next: created.next, point };
-            })(),
+        })(),
         throughPoint = throughResult.point,
-        ep = segmentPoints(source),
-        dx = ep.b.x - ep.a.x,
-        dy = ep.b.y - ep.a.y,
+        dx = linearPending.b.x - linearPending.a.x,
+        dy = linearPending.b.y - linearPending.a.y,
         v = tool === "parallel" ? { x: dx, y: dy } : { x: -dy, y: dx },
         o: SegmentObject = {
           id: uid(),
           type: "line",
           name:
             tool === "parallel"
-              ? `מקביל ל־${source.name}`
-              : `מאונך ל־${source.name}`,
+              ? `מקביל ל־${linearPending.name}`
+              : `מאונך ל־${linearPending.name}`,
           a: throughPoint,
           b: { x: throughPoint.x + v.x, y: throughPoint.y + v.y },
           aId: throughPoint.id,
@@ -2507,12 +2578,14 @@ export default function CoordinateWorkspace() {
           strokeStyle: "solid",
           construction: {
             kind: tool,
-            sourceId: source.id,
+            sourceId: linearPending.sourceId,
+            sourceAId: linearPending.sourceAId,
+            sourceBId: linearPending.sourceBId,
             throughId: throughPoint.id,
           },
         };
       pushObjects([...throughResult.next, o]);
-      setObjectPending(null);
+      setLinearPending(null);
       setSelectedId(o.id);
       setOpenPropertiesId(o.id);
       setTool("select");
@@ -3006,7 +3079,20 @@ export default function CoordinateWorkspace() {
               Boolean(
                 o.construction &&
                   (("sourceId" in o.construction &&
-                    ids.has(o.construction.sourceId)) ||
+                    Boolean(
+                      o.construction.sourceId &&
+                        ids.has(o.construction.sourceId),
+                    )) ||
+                    ("sourceAId" in o.construction &&
+                      Boolean(
+                        o.construction.sourceAId &&
+                          ids.has(o.construction.sourceAId),
+                      )) ||
+                    ("sourceBId" in o.construction &&
+                      Boolean(
+                        o.construction.sourceBId &&
+                          ids.has(o.construction.sourceBId),
+                      )) ||
                     ("throughId" in o.construction &&
                       ids.has(o.construction.throughId)) ||
                     ("angleId" in o.construction &&
@@ -3209,7 +3295,7 @@ export default function CoordinateWorkspace() {
           ? anglePending.length
             ? `נבחרו ${anglePending.length} מתוך 3 נקודות; השנייה היא הקודקוד`
             : "בחרו זווית, שלוש נקודות, או שוק ואז קודקוד"
-        : objectPending
+        : objectPending || linearPending
           ? "השלימו את הבחירה השנייה"
           : pending
             ? "בחרו נקודה שנייה"

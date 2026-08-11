@@ -38,7 +38,9 @@ export type SegmentObject = {
   construction?:
     | {
         kind: "parallel" | "perpendicular";
-        sourceId: string;
+        sourceId?: string;
+        sourceAId?: string;
+        sourceBId?: string;
         throughId: string;
       }
     | {
