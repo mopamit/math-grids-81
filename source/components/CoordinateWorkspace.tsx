@@ -72,6 +72,90 @@ type LabelHitbox = {
 };
 type IntersectionCandidate = Point & { sourceIds: [string, string] };
 
+function NumberStepper({
+  value,
+  onChange,
+  step = 1,
+  allowEmpty = false,
+  label,
+}: {
+  value?: number;
+  onChange: (value: number | undefined) => void;
+  step?: number;
+  allowEmpty?: boolean;
+  label: string;
+}) {
+  const [draft, setDraft] = useState(value === undefined ? "" : String(value));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (document.activeElement !== inputRef.current) {
+      setDraft(value === undefined ? "" : String(value));
+    }
+  }, [value]);
+
+  const commit = (raw: string) => {
+    const normalized = raw.trim().replace(",", ".");
+    if (normalized === "" && allowEmpty) {
+      setDraft("");
+      onChange(undefined);
+      return;
+    }
+    const next = Number(normalized);
+    if (Number.isFinite(next)) {
+      setDraft(String(next));
+      onChange(next);
+    } else {
+      setDraft(value === undefined ? "" : String(value));
+    }
+  };
+
+  const adjust = (direction: -1 | 1) => {
+    const current = Number(draft.replace(",", "."));
+    const base = Number.isFinite(current) ? current : (value ?? 0);
+    const next = Number((base + direction * step).toFixed(10));
+    setDraft(String(next));
+    onChange(next);
+  };
+
+  return (
+    <div className="number-stepper" dir="ltr">
+      <button
+        type="button"
+        aria-label={`הקטנת ${label}`}
+        onClick={() => adjust(-1)}
+      >
+        −
+      </button>
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="decimal"
+        aria-label={label}
+        value={draft}
+        onChange={(event) => {
+          const next = event.target.value;
+          if (/^-?\d*(?:[.,]\d*)?$/.test(next)) setDraft(next);
+        }}
+        onBlur={() => commit(draft)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            commit(draft);
+            inputRef.current?.blur();
+          }
+        }}
+      />
+      <button
+        type="button"
+        aria-label={`הגדלת ${label}`}
+        onClick={() => adjust(1)}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 type ExpressionToken = {
   kind:
     | "number"
@@ -4322,61 +4406,65 @@ export default function CoordinateWorkspace() {
                             <div>
                               <label>
                                 מ־x
-                                <input
-                                  type="number"
-                                  value={selected.domainMin ?? ""}
-                                  onChange={(e) =>
+                                <NumberStepper
+                                  label="קצה שמאלי של התחום"
+                                  value={selected.domainMin}
+                                  allowEmpty
+                                  onChange={(value) =>
                                     updateSelected({
-                                      domainMin:
-                                        e.target.value === ""
-                                          ? undefined
-                                          : Number(e.target.value),
+                                      domainMin: value,
                                     })
                                   }
                                 />
                               </label>
                               <label>
                                 עד x
-                                <input
-                                  type="number"
-                                  value={selected.domainMax ?? ""}
-                                  onChange={(e) =>
+                                <NumberStepper
+                                  label="קצה ימני של התחום"
+                                  value={selected.domainMax}
+                                  allowEmpty
+                                  onChange={(value) =>
                                     updateSelected({
-                                      domainMax:
-                                        e.target.value === ""
-                                          ? undefined
-                                          : Number(e.target.value),
+                                      domainMax: value,
                                     })
                                   }
                                 />
                               </label>
                             </div>
-                            <label className="toggle">
-                              <input
-                                type="checkbox"
-                                checked={selected.minClosed}
-                                onChange={(e) =>
-                                  updateSelected({
-                                    minClosed: e.target.checked,
-                                  })
-                                }
-                              />
-                              <span />
-                              קצה שמאלי סגור
-                            </label>
-                            <label className="toggle">
-                              <input
-                                type="checkbox"
-                                checked={selected.maxClosed}
-                                onChange={(e) =>
-                                  updateSelected({
-                                    maxClosed: e.target.checked,
-                                  })
-                                }
-                              />
-                              <span />
-                              קצה ימני סגור
-                            </label>
+                            <div className="domain-toggles">
+                              <label className="toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={selected.minClosed}
+                                  onChange={(e) =>
+                                    updateSelected({
+                                      minClosed: e.target.checked,
+                                    })
+                                  }
+                                />
+                                <span />
+                                <em>
+                                  קצה שמאלי
+                                  <b>{selected.minClosed ? "סגור" : "פתוח"}</b>
+                                </em>
+                              </label>
+                              <label className="toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={selected.maxClosed}
+                                  onChange={(e) =>
+                                    updateSelected({
+                                      maxClosed: e.target.checked,
+                                    })
+                                  }
+                                />
+                                <span />
+                                <em>
+                                  קצה ימני
+                                  <b>{selected.maxClosed ? "סגור" : "פתוח"}</b>
+                                </em>
+                              </label>
+                            </div>
                           </div>
                         </>
                       )}
@@ -4384,31 +4472,36 @@ export default function CoordinateWorkspace() {
                         <div className="slider-properties">
                           <label>
                             מינימום
-                            <input
-                              type="number"
+                            <NumberStepper
+                              label="מינימום המחוון"
                               value={selected.min}
-                              onChange={(e) =>
-                                updateSelected({ min: Number(e.target.value) })
+                              step={selected.step}
+                              onChange={(value) =>
+                                value !== undefined && updateSelected({ min: value })
                               }
                             />
                           </label>
                           <label>
                             מקסימום
-                            <input
-                              type="number"
+                            <NumberStepper
+                              label="מקסימום המחוון"
                               value={selected.max}
-                              onChange={(e) =>
-                                updateSelected({ max: Number(e.target.value) })
+                              step={selected.step}
+                              onChange={(value) =>
+                                value !== undefined && updateSelected({ max: value })
                               }
                             />
                           </label>
                           <label>
                             צעד
-                            <input
-                              type="number"
+                            <NumberStepper
+                              label="צעד המחוון"
                               value={selected.step}
-                              onChange={(e) =>
-                                updateSelected({ step: Number(e.target.value) })
+                              step={0.1}
+                              onChange={(value) =>
+                                value !== undefined &&
+                                value > 0 &&
+                                updateSelected({ step: value })
                               }
                             />
                           </label>

@@ -1171,9 +1171,105 @@ select {
 }
 .slider-properties {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
+  grid-template-columns: 1fr;
+  gap: 10px;
   margin: 10px 0;
+}
+.slider-properties label,
+.domain-fields label {
+  color: #526970;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.number-stepper {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  height: 42px;
+  margin-top: 5px;
+  overflow: hidden;
+  border: 1px solid #bfd3d5;
+  border-radius: 9px;
+  background: #fff;
+}
+.number-stepper:focus-within {
+  border-color: #168d85;
+  box-shadow: 0 0 0 3px #168d851c;
+}
+.number-stepper input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  margin: 0;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  color: #173d45;
+  font-family: "Latin Modern Math", Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+.number-stepper button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: #edf7f6;
+  color: #087f78;
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.number-stepper button:first-child {
+  border-right: 1px solid #d4e4e5;
+}
+.number-stepper button:last-child {
+  border-left: 1px solid #d4e4e5;
+}
+.number-stepper button:hover {
+  background: #dff1ef;
+}
+.number-stepper button:active {
+  background: #cce8e5;
+}
+.domain-toggles {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px !important;
+  margin-top: 10px;
+}
+.domain-toggles .toggle {
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #dce7e8;
+  border-radius: 8px;
+  background: #f8fbfb;
+  gap: 7px;
+}
+.domain-fields .domain-toggles .toggle input {
+  display: none;
+}
+.domain-toggles .toggle > span {
+  flex: 0 0 34px;
+}
+.domain-toggles .toggle em {
+  display: grid;
+  min-width: 0;
+  color: #425d65;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.domain-toggles .toggle em b {
+  color: #087f78;
+  font-size: 10px;
 }
 .value-table {
   width: 100%;
@@ -1536,19 +1632,21 @@ select {
 }
 .line-appearance label {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
 }
 .line-appearance select {
   display: block;
   width: 100%;
-  height: 33px;
+  height: 42px;
   margin-top: 5px;
-  padding: 0 7px;
+  padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 9px;
   background: #fff;
   color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
 }
 .equation-preview {
   font-family: "Latin Modern Math", serif;
